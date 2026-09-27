@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterator
 
-from .models import CatalogItem
+from .models import CatalogItem, FetchedPage, ItemSnapshot, Status
 
 
 class ParseError(ValueError):
@@ -145,3 +147,91 @@ def _int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+_SOLD_RE = re.compile(r"\bVândut\b")
+_UPLOAD_RE = re.compile(r"incarcat\s+(?:acum\s+)?([^\n]{1,40})")
+_NUMBER_RE = re.compile(r"(\d+)\s+(?:de\s+)?(.*)")
+_ARTICLE_RE = re.compile(r"(un|o|cateva)\s+(.*)")
+_UNITS = (
+    (re.compile(r"secund"), timedelta(seconds=1)),
+    (re.compile(r"minut"), timedelta(minutes=1)),
+    (re.compile(r"or[ae]\b"), timedelta(hours=1)),
+    (re.compile(r"zi(le)?\b"), timedelta(days=1)),
+    (re.compile(r"saptaman"), timedelta(days=7)),
+    (re.compile(r"lun"), timedelta(days=30)),
+    (re.compile(r"an(i)?\b"), timedelta(days=365)),
+)
+
+
+def parse_item(page: FetchedPage, item_id: int) -> ItemSnapshot:
+    if page.status in (404, 410) or not re.search(rf"/items/{item_id}(?:[-/?#]|$)", page.url):
+        return ItemSnapshot(
+            item_id=item_id, status=Status.DELETED, price=None, currency=None, favourite_count=None,
+            catalog_id=None, upload_age=None, raw={"http_status": page.status, "final_url": page.url},
+        )
+    dicts = all_dicts(page.html)
+    buy = _first(dicts, lambda d: "can_buy" in d and str(d.get("item_id")) == str(item_id))
+    if buy is None:
+        buy = _first(dicts, lambda d: "can_buy" in d and "is_reserved" in d)
+    if buy is None:
+        raise ParseError(f"item {item_id}: no buy-state object in page data")
+    offer = _first(
+        dicts, lambda d: isinstance(d.get("price"), dict) and "currency_code" in d["price"] and "seller_id" in d
+    )
+    price, currency = _money(offer["price"]) if offer else (None, None)
+    favourites = _first(dicts, lambda d: "favourite_count" in d)
+    catalog = _first(dicts, lambda d: "catalog_id" in d)
+    sold_text = bool(_SOLD_RE.search(page.text))
+    return ItemSnapshot(
+        item_id=item_id,
+        status=_status(buy, sold_text),
+        price=price,
+        currency=currency,
+        favourite_count=_int(favourites.get("favourite_count")) if favourites else None,
+        catalog_id=_int(catalog.get("catalog_id")) if catalog else None,
+        upload_age=parse_upload_age(page.text),
+        raw={"buy": buy, "offer": offer, "sold_text": sold_text, "http_status": page.status},
+    )
+
+
+def _status(buy: dict, sold_text: bool) -> Status:
+    if buy.get("can_buy") is True:
+        return Status.AVAILABLE
+    if buy.get("is_reserved") is True:
+        return Status.RESERVED
+    if sold_text:
+        return Status.SOLD
+    if buy.get("is_hidden") is True:
+        return Status.HIDDEN
+    return Status.UNKNOWN
+
+
+def _first(dicts: list[dict], predicate) -> dict | None:
+    return next((d for d in dicts if predicate(d)), None)
+
+
+def _fold(text: str) -> str:
+    """Lower-case and strip diacritics: 'Încărcat acum o oră' -> 'incarcat acum o ora'."""
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).lower()
+
+
+def parse_upload_age(text: str) -> timedelta | None:
+    match = _UPLOAD_RE.search(_fold(text))
+    if not match:
+        return None
+    phrase = match.group(1).strip()
+    number = _NUMBER_RE.match(phrase)
+    if number:
+        count, rest = int(number.group(1)), number.group(2)
+    else:
+        article = _ARTICLE_RE.match(phrase)
+        if not article:
+            return None
+        count = 3 if article.group(1) == "cateva" else 1
+        rest = article.group(2)
+    for pattern, unit in _UNITS:
+        if pattern.match(rest):
+            return unit * count
+    return None
