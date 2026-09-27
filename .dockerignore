@@ -1,0 +1,11 @@
+.venv
+.git
+.env
+browser-profile
+spike
+debug
+logs
+tests
+docs
+*.xlsx
+status.json

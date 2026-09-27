@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: vinted
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: vinted_tracker
+    volumes:
+      - pgdata:/var/lib/postgresql
+    restart: unless-stopped
+  tracker:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://vinted:${POSTGRES_PASSWORD}@db:5432/vinted_tracker
+    volumes:
+      - ./debug:/app/debug
+      - ./logs:/app/logs
+      - ./browser-profile:/app/browser-profile
+    restart: unless-stopped
+volumes:
+  pgdata: {}
