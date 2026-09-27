@@ -1,0 +1,54 @@
+# Vinted sell-time tracker settings.
+# Spec: docs/superpowers/specs/2026-09-27-vinted-sell-time-tracker-design.md
+base_url: https://www.vinted.ro
+headless: true
+
+# catalog 5 = Men. Brand IDs from vinted.ro /api/v2/brands (looked up 2026-09-27).
+queries:
+  - name: streetwear
+    catalog_ids: [5]
+    brand_ids:
+      - 53       # Nike
+      - 5977     # Nike Air
+      - 14       # adidas
+      - 194976   # adidas Originals
+      - 2319     # The North Face
+      - 362      # Carhartt
+      - 872289   # Carhartt WIP
+      - 441      # Stüssy
+  - name: premium_casual
+    catalog_ids: [5]
+    brand_ids:
+      - 88       # Ralph Lauren
+      - 4273     # Polo Ralph Lauren
+      - 94       # Tommy Hilfiger
+      - 304      # Lacoste
+      - 120      # Hugo Boss
+      - 6039857  # BOSS Hugo Boss
+      - 1707868  # HUGO Hugo Boss
+  - name: designer   # no price filter on purpose: cheap and possibly fake listings are tracked too
+    catalog_ids: [5]
+    brand_ids:
+      - 73306    # Stone Island
+      - 73952    # C.P. Company
+      - 6539     # Moncler
+
+discovery:
+  poll_minutes: 5
+  max_item_age_minutes: 60
+  max_new_per_day: 250
+  whole_price_prefilter: true   # skip catalog prices with decimals (currency-converted = foreign seller); validated in Task 8
+
+recheck:
+  schedule:          # [item age below N hours, check every M hours]
+    - [24, 2]
+    - [168, 8]
+    - [720, 24]      # the last row's age is where tracking stops (30 days)
+  uncertain_gap_hours: 48
+
+rate:
+  min_delay_s: 8
+  max_delay_s: 12
+  max_pages_per_hour: 360
+
+backoff_minutes: [30, 60, 120, 240]
