@@ -40,3 +40,12 @@ def test_stretch_factor():
     assert stretch_factor(0, 360) == 1.0
     assert stretch_factor(288, 360) == 1.0
     assert stretch_factor(576, 360) == 2.0
+
+
+def test_stretch_factor_is_capped():
+    assert stretch_factor(5000, 360) == 2.0
+
+
+def test_stretched_interval_never_exceeds_max_interval():
+    now = T0 + timedelta(days=10)
+    assert next_check_at(T0, now, SCHED, stretch=2.0, max_interval=timedelta(hours=24)) == now + timedelta(hours=24)

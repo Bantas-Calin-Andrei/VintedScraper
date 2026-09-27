@@ -73,3 +73,15 @@ def test_save_debug_page(tmp_path):
     path = save_debug_page(page, "item-1", tmp_path)
     assert path.read_text(encoding="utf-8") == "<html>x</html>"
     assert path.with_suffix(".txt").read_text(encoding="utf-8").startswith("URL: https://www.vinted.ro/items/1")
+
+
+def test_debug_pages_are_capped(tmp_path):
+    for i in range(5):
+        (tmp_path / f"20260101T00000{i}-old-{i}.html").write_text("x", encoding="utf-8")
+        (tmp_path / f"20260101T00000{i}-old-{i}.txt").write_text("x", encoding="utf-8")
+    page = FetchedPage(url="https://www.vinted.ro/items/1", status=200, html="<html>new</html>", text="x")
+    save_debug_page(page, "item-1", tmp_path, max_files=3)
+    names = sorted(p.name for p in tmp_path.glob("*.html"))
+    assert len(names) == 3
+    assert names[-1].endswith("item-1.html")
+    assert len(list(tmp_path.glob("*.txt"))) == 3

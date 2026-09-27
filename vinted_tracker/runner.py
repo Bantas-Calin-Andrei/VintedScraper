@@ -14,7 +14,7 @@ import psycopg
 
 from . import db
 from .browser import BlockedError, Fetcher, FetchError
-from .config import Config
+from .config import Config, Query
 from .discover import discover_query
 from .models import utcnow
 from .recheck import recheck_item
@@ -23,6 +23,8 @@ from .schedule import stretch_factor
 log = logging.getLogger(__name__)
 
 PARSER_BROKEN_THRESHOLD = 10  # parse errors within one hour
+NETWORK_ERROR_THRESHOLD = 3  # consecutive failed page loads before health says so
+RESTART_AFTER_FETCH_FAILURES = 10  # consecutive failed page loads before the process exits to restart the browser
 MAX_IDLE_S = 60.0
 
 
@@ -53,20 +55,19 @@ class Runner:
         self.health = "starting"
         self.last_error: str | None = None
         self._block_level = 0
+        self._fetch_failures = 0
         self._parse_error_times: deque[datetime] = deque()
 
     def tick(self) -> float:
         """Do one unit of work. Returns how many seconds to wait before the next tick."""
         now = self.clock()
-        poll = timedelta(minutes=self.cfg.poll_minutes)
-        for q in self.cfg.queries:
-            state = db.get_query_state(self.conn, q.name)
-            if state is None or now - state[1] >= poll:
-                result = discover_query(self.conn, self.fetcher, self.cfg, q, self.clock, self.debug_dir)
-                self.counters.items_discovered += result.tracked
-                self._record_parse_errors(result.parse_errors)
-                self._mark_ok()
-                return 0.0
+        q = self._most_overdue_query(now)
+        if q is not None:
+            result = discover_query(self.conn, self.fetcher, self.cfg, q, self.clock, self.debug_dir)
+            self.counters.items_discovered += result.tracked
+            self._record_parse_errors(result.parse_errors)
+            self._mark_ok()
+            return 0.0
         due = db.due_items(self.conn, now, limit=1)
         if due:
             stretch = stretch_factor(db.count_due(self.conn, now), self.cfg.max_pages_per_hour)
@@ -91,6 +92,13 @@ class Runner:
                 except FetchError as exc:
                     log.warning("%s", exc)
                     self.last_error = str(exc)
+                    self._fetch_failures += 1
+                    if self._fetch_failures >= NETWORK_ERROR_THRESHOLD:
+                        self.health = "network_error"
+                    if self._fetch_failures >= RESTART_AFTER_FETCH_FAILURES:
+                        log.error("%s page loads failed in a row; exiting so the browser restarts.", self._fetch_failures)
+                        self.write_status()
+                        return
                     wait = MAX_IDLE_S
                 self.write_status()
                 if wait > 0:
@@ -139,12 +147,25 @@ class Runner:
         while self._parse_error_times and self._parse_error_times[0] < cutoff:
             self._parse_error_times.popleft()
         self._block_level = 0
+        self._fetch_failures = 0
         if len(self._parse_error_times) >= PARSER_BROKEN_THRESHOLD:
             if self.health != "parser_broken":
                 log.error("Many parse errors in the last hour: Vinted probably changed its pages. See debug/.")
             self.health = "parser_broken"
         else:
             self.health = "ok"
+
+    def _most_overdue_query(self, now: datetime) -> Query | None:
+        """The due query that was polled longest ago (never-polled first), so no query starves."""
+        poll = timedelta(minutes=self.cfg.poll_minutes)
+        due: list[tuple[datetime, Query]] = []
+        for q in self.cfg.queries:
+            state = db.get_query_state(self.conn, q.name)
+            if state is None:
+                return q
+            if now - state[1] >= poll:
+                due.append((state[1], q))
+        return min(due, key=lambda pair: pair[0])[1] if due else None
 
     def _seconds_until_next(self, now: datetime) -> float:
         waits = [MAX_IDLE_S]

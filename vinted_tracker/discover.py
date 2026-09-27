@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -86,7 +87,7 @@ def discover_query(
         if db.is_known(conn, item.id):
             continue
         result.candidates += 1
-        reason = _catalog_reject_reason(conn, cfg, item, clock())
+        reason = _catalog_reject_reason(conn, cfg, q, item, clock())
         if reason is None:
             reason = _try_track(conn, fetcher, cfg, q, item, clock, debug_dir, result)
         if reason is not None:
@@ -113,9 +114,18 @@ def _load_catalog(
         return None
 
 
-def _catalog_reject_reason(conn: psycopg.Connection, cfg: Config, item: CatalogItem, now: datetime) -> str | None:
+def hourly_quota(cfg: Config) -> int:
+    """Per-query share of the daily cap for one hour, so the sample spreads over the day and across queries."""
+    return math.ceil(cfg.max_new_per_day / 24 / len(cfg.queries))
+
+
+def _catalog_reject_reason(
+    conn: psycopg.Connection, cfg: Config, q: Query, item: CatalogItem, now: datetime
+) -> str | None:
     if db.count_new_since(conn, now - timedelta(days=1)) >= cfg.max_new_per_day:
         return "daily_cap"
+    if db.count_new_since(conn, now - timedelta(hours=1), q.name) >= hourly_quota(cfg):
+        return "hourly_cap"
     price = item.price_ron
     if cfg.whole_price_prefilter and price is not None and price != price.to_integral_value():
         return "likely_foreign"

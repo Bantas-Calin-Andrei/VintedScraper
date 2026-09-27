@@ -97,3 +97,12 @@ def test_catalog_parse_error_saves_debug_page(conn, tmp_path):
     assert result.parse_errors == 1
     assert db.get_query_state(conn, "streetwear") is None
     assert len(list(tmp_path.glob("*catalog-streetwear-p1.html"))) == 1
+
+
+def test_hourly_quota_per_query_spreads_the_daily_cap(conn, tmp_path):
+    db.set_query_state(conn, "streetwear", 10, NOW - timedelta(minutes=5))
+    fetcher = FakeFetcher({CAT1: catalog_page(CAT1, [12, 11, 10]), item_url(BASE, 11): item_page(11)})
+    result = run(conn, fetcher, cfg=make_config(max_new_per_day=24), tmp_path=tmp_path)  # 1 per hour
+    assert result.tracked == 1
+    assert item_url(BASE, 12) not in fetcher.calls
+    assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "hourly_cap"

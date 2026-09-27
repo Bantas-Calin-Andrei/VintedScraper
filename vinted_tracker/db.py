@@ -150,8 +150,13 @@ def set_query_state(conn: psycopg.Connection, name: str, high_water_id: int, pol
     )
 
 
-def count_new_since(conn: psycopg.Connection, since: datetime) -> int:
-    return conn.execute("SELECT count(*) AS n FROM items WHERE first_seen_at >= %s", (since,)).fetchone()["n"]
+def count_new_since(conn: psycopg.Connection, since: datetime, query_name: str | None = None) -> int:
+    if query_name is None:
+        sql, params = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s", (since,)
+    else:
+        sql = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND query_name = %s"
+        params = (since, query_name)
+    return conn.execute(sql, params).fetchone()["n"]
 
 
 def due_items(conn: psycopg.Connection, now: datetime, limit: int) -> list[dict]:

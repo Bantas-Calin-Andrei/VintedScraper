@@ -148,8 +148,8 @@ class BrowserSession:
         raise FetchError(f"failed to load {url} after {self._retries} attempts: {last_error}")
 
 
-def save_debug_page(page: FetchedPage, label: str, debug_dir: Path) -> Path:
-    """Keep a page that failed to parse so the parser can be fixed later."""
+def save_debug_page(page: FetchedPage, label: str, debug_dir: Path, max_files: int = 200) -> Path:
+    """Keep a page that failed to parse so the parser can be fixed later (only the newest `max_files`)."""
     debug_dir.mkdir(parents=True, exist_ok=True)
     stamp = utcnow().strftime("%Y%m%dT%H%M%S")
     html_path = debug_dir / f"{stamp}-{label}.html"
@@ -157,4 +157,8 @@ def save_debug_page(page: FetchedPage, label: str, debug_dir: Path) -> Path:
     html_path.with_suffix(".txt").write_text(
         f"URL: {page.url}\nHTTP: {page.status}\n\n{page.text}", encoding="utf-8"
     )
+    saved = sorted(debug_dir.glob("*.html"))  # names start with a UTC timestamp, so this is oldest first
+    for old in saved[: max(0, len(saved) - max_files)]:
+        old.unlink(missing_ok=True)
+        old.with_suffix(".txt").unlink(missing_ok=True)
     return html_path

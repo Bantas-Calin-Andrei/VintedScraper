@@ -68,3 +68,35 @@ def test_parser_broken_health_clears_after_an_hour(conn, tmp_path):
     clock.t = NOW + timedelta(hours=2)
     runner._mark_ok()
     assert runner.health == "ok"
+
+
+class FailingFetcher:
+    pages_loaded = 0
+
+    def fetch(self, url):
+        from vinted_tracker.browser import FetchError
+
+        raise FetchError(f"failed to load {url}")
+
+
+def test_repeated_fetch_errors_report_and_stop(conn, tmp_path):
+    sleeps = []
+    runner = make_runner(conn, FailingFetcher(), tmp_path, sleeps=sleeps)
+    runner.run_forever(max_ticks=50)
+    assert len(sleeps) == 9  # waits after failures 1-9, exits on the 10th instead of looping forever
+    status = json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+    assert status["health"] == "network_error"
+
+
+def test_most_overdue_query_is_polled_first(conn, tmp_path):
+    from vinted_tracker.config import Query as Q2
+
+    cfg = make_config(queries=(Q2("a", (5,), (1,)), Q2("b", (5,), (2,))))
+    db.set_query_state(conn, "a", 100, NOW - timedelta(minutes=6))
+    db.set_query_state(conn, "b", 100, NOW - timedelta(minutes=30))
+    url_b = build_catalog_url(BASE, Q2("b", (5,), (2,)))
+    fetcher = FakeFetcher({url_b: catalog_page(url_b, [100])})
+    runner = Runner(conn, fetcher, cfg, clock=Clock(NOW), sleep=lambda s: None,
+                    status_path=tmp_path / "status.json", debug_dir=tmp_path / "debug")
+    runner.tick()
+    assert fetcher.calls == [url_b]

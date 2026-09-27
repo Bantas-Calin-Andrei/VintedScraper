@@ -10,11 +10,11 @@ from typing import Callable
 import psycopg
 
 from . import db
-from .browser import Fetcher, save_debug_page
+from .browser import Fetcher, FetchError, save_debug_page
 from .config import Config
 from .discover import item_url
 from .models import ItemSnapshot, Status
-from .outcome import compute_outcome
+from .outcome import Outcome, compute_outcome
 from .parse import ParseError, parse_item
 from .schedule import next_check_at, stop_age
 
@@ -38,7 +38,12 @@ def recheck_item(
     stretch: float = 1.0,
 ) -> RecheckResult:
     item_id, uploaded_at = row["id"], row["uploaded_at"]
-    page = fetcher.fetch(item_url(cfg.base_url, item_id))
+    try:
+        page = fetcher.fetch(item_url(cfg.base_url, item_id))
+    except FetchError:
+        # Skip until the next cycle so one unreachable page can't block every other recheck.
+        _record(conn, cfg, item_id, uploaded_at, clock(), None, stretch)
+        raise
     now = clock()
     snap: ItemSnapshot | None
     try:
@@ -47,7 +52,23 @@ def recheck_item(
         log.warning("item %s: %s", item_id, exc)
         save_debug_page(page, f"item-{item_id}", debug_dir)
         snap = None
+    outcome = _record(conn, cfg, item_id, uploaded_at, now, snap, stretch)
+    if outcome.final_status:
+        log.info("item %s finished: %s", item_id, outcome.final_status)
+    status = snap.status if snap is not None else Status.UNKNOWN
+    return RecheckResult(status=status, parse_error=snap is None, final_status=outcome.final_status)
 
+
+def _record(
+    conn: psycopg.Connection,
+    cfg: Config,
+    item_id: int,
+    uploaded_at: datetime,
+    now: datetime,
+    snap: ItemSnapshot | None,
+    stretch: float,
+) -> Outcome:
+    """Store one observation and the item's resulting outcome and next check."""
     status = snap.status if snap is not None else Status.UNKNOWN
     previous = db.last_observation(conn, item_id)
     changed = snap is not None and (previous is None or previous["status"] != status.value)
@@ -62,23 +83,25 @@ def recheck_item(
     )
 
     schedule = cfg.recheck_schedule
+    uncertain_gap = timedelta(hours=cfg.uncertain_gap_hours)
     outcome = compute_outcome(
         uploaded_at,
         db.observations_for(conn, item_id),
         now,
         stop_age=stop_age(schedule),
-        uncertain_gap=timedelta(hours=cfg.uncertain_gap_hours),
+        uncertain_gap=uncertain_gap,
     )
+    nxt = None
+    if not outcome.final_status:
+        nxt = next_check_at(uploaded_at, now, schedule, stretch, max_interval=uncertain_gap / 2)
     db.update_item_after_check(
         conn,
         item_id,
         checked_at=now,
-        next_check_at=None if outcome.final_status else next_check_at(uploaded_at, now, schedule, stretch),
+        next_check_at=nxt,
         final_status=outcome.final_status,
         sold_after_min=outcome.sold_after_min,
         sold_after_max=outcome.sold_after_max,
         uncertain=outcome.uncertain,
     )
-    if outcome.final_status:
-        log.info("item %s finished: %s", item_id, outcome.final_status)
-    return RecheckResult(status=status, parse_error=snap is None, final_status=outcome.final_status)
+    return outcome

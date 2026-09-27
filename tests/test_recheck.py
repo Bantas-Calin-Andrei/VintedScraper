@@ -83,3 +83,31 @@ def test_stretch_delays_next_check(conn, tmp_path):
     track(conn)
     check(conn, item_page(1001), 2, tmp_path, stretch=2.0)
     assert item_row(conn)["next_check_at"] == T0 + timedelta(hours=6)
+
+
+class FailingFetcher:
+    pages_loaded = 0
+
+    def fetch(self, url):
+        from vinted_tracker.browser import FetchError
+
+        raise FetchError(f"failed to load {url}")
+
+
+def test_fetch_error_records_unknown_and_reschedules(conn, tmp_path):
+    import pytest
+
+    from vinted_tracker.browser import FetchError
+
+    track(conn)
+    now = T0 + timedelta(hours=2)
+    with pytest.raises(FetchError):
+        recheck_item(conn, FailingFetcher(), make_config(), ROW, lambda: now, tmp_path)
+    assert db.last_observation(conn, 1001)["status"] == "unknown"
+    assert item_row(conn)["next_check_at"] == T0 + timedelta(hours=4)
+
+
+def test_rechecks_after_downtime_stay_within_half_the_uncertain_gap(conn, tmp_path):
+    track(conn)
+    check(conn, item_page(1001), 24 * 10, tmp_path, stretch=5.0)
+    assert item_row(conn)["next_check_at"] == T0 + timedelta(days=10, hours=24)
