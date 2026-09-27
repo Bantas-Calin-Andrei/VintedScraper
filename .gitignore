@@ -1,0 +1,9 @@
+﻿.playwright-mcp/
+__pycache__/
+*.pyc
+.venv/
+data/
+debug/
+browser-profile/
+*.xlsx
+status.json
