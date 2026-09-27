@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vinted-tracker"
+version = "0.1.0"
+description = "Tracks how long new men's listings on vinted.ro take to sell"
+requires-python = ">=3.12"
+dependencies = [
+    "playwright>=1.47",
+    "psycopg[binary]>=3.2",
+    "PyYAML>=6.0",
+    "python-dotenv>=1.0",
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["vinted_tracker"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

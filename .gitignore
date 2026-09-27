@@ -1,4 +1,4 @@
-﻿.playwright-mcp/
+.playwright-mcp/
 __pycache__/
 *.pyc
 .venv/
@@ -7,3 +7,10 @@ debug/
 browser-profile/
 *.xlsx
 status.json
+spike/out/
+spike/profile/
+logs/
+*.tmp
+.env
+*.egg-info/
+spike/*.log
