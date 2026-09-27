@@ -49,3 +49,26 @@ def test_item_without_label_has_no_brand():
     del entry["productItem"]["itemBox"]
     (item,) = parse_catalog(catalog_html(entry))
     assert (item.brand, item.size, item.condition) == (None, None, None)
+
+
+def test_rsc_text_decodes_large_payload_without_blowing_up_memory():
+    import json
+    import tracemalloc
+
+    chunk = "ab\\\"" * 1_000_000  # 4 MB with escapes, like real catalog payloads
+    html = f"<script>self.__next_f.push([1,{json.dumps(chunk)}])</script>"
+    tracemalloc.start()
+    try:
+        assert rsc_text(html) == chunk
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 60 * 2**20, f"peak {peak / 2**20:.0f} MB"
+
+
+def test_rsc_text_skips_a_malformed_chunk_and_keeps_the_rest():
+    html = (
+        r'<script>self.__next_f.push([1,"broken \x"])</script>'
+        r'<script>self.__next_f.push([1,"1:{\"a\":1}\n"])</script>'
+    )
+    assert rsc_text(html) == '1:{"a":1}\n'

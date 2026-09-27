@@ -36,6 +36,16 @@ Edit `config.yaml` to change the watchlist (brand IDs), check schedule or rate l
 `powershell -ExecutionPolicy Bypass -File scripts\register_task.ps1` starts the tracker at every logon.
 Remove it with `Unregister-ScheduledTask -TaskName VintedTracker`.
 
+Only one tracker can run at a time. To run it yourself in a terminal, stop the background one first:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\stop_tracker.ps1   # Stop-ScheduledTask alone leaves Python running
+.venv\Scripts\python -m vinted_tracker run                          # Ctrl+C to stop
+Start-ScheduledTask -TaskName VintedTracker                         # hand it back to the background
+```
+
+`status` and `export` work while the background tracker runs. Watch it live with `Get-Content logs\tracker.log -Wait -Tail 20`.
+
 ## Move to a server later
 
 Copy the repo and `.env` (with `POSTGRES_PASSWORD`) to the VPS, then `docker compose up -d --build`.

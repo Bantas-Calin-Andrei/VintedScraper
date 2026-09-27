@@ -18,6 +18,7 @@ from . import db
 from .browser import BlockedError, BrowserSession, RateLimiter
 from .config import Config, ConfigError, load_config
 from .export import build_report, write_report
+from .lock import AlreadyRunning, single_instance
 from .models import FetchedPage
 from .parse import ParseError, parse_catalog, parse_item
 from .runner import Runner
@@ -25,6 +26,11 @@ from .runner import Runner
 PROFILE_DIR = Path("browser-profile")
 FIXTURES_DIR = Path("tests/fixtures")
 STATUS_PATH = Path("status.json")
+LOCK_PATH = Path("tracker.lock")
+ALREADY_RUNNING_HELP = (
+    "Another tracker is already running (probably the background task). "
+    "Stop it first with: powershell -ExecutionPolicy Bypass -File scripts\\stop_tracker.ps1"
+)
 _ITEM_ID_RE = re.compile(r"/items/(\d+)")
 log = logging.getLogger("vinted_tracker")
 
@@ -76,16 +82,20 @@ def _browser(cfg: Config, headed: bool) -> BrowserSession:
 
 
 def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
-    with _browser(cfg, args.headed) as browser:
-        while True:
-            try:
-                conn = db.connect(cfg.database_url)
-                db.init_schema(conn)
-                Runner(conn, browser, cfg, status_path=STATUS_PATH).run_forever(max_ticks=args.max_ticks)
-                return 0
-            except psycopg.OperationalError as exc:
-                log.error("Database unreachable (%s). Scraping is paused; retrying in 60 s.", exc)
-                time.sleep(60)
+    try:
+        with single_instance(LOCK_PATH), _browser(cfg, args.headed) as browser:
+            while True:
+                try:
+                    conn = db.connect(cfg.database_url)
+                    db.init_schema(conn)
+                    Runner(conn, browser, cfg, status_path=STATUS_PATH).run_forever(max_ticks=args.max_ticks)
+                    return 0
+                except psycopg.OperationalError as exc:
+                    log.error("Database unreachable (%s). Scraping is paused; retrying in 60 s.", exc)
+                    time.sleep(60)
+    except AlreadyRunning:
+        print(ALREADY_RUNNING_HELP)
+        return 1
 
 
 def cmd_init_db(cfg: Config, args: argparse.Namespace) -> int:
@@ -112,8 +122,11 @@ def cmd_export(cfg: Config, args: argparse.Namespace) -> int:
 
 def cmd_probe(cfg: Config, args: argparse.Namespace) -> int:
     try:
-        with _browser(cfg, args.headed) as browser:
+        with single_instance(LOCK_PATH), _browser(cfg, args.headed) as browser:
             page = browser.fetch(args.url)
+    except AlreadyRunning:
+        print(ALREADY_RUNNING_HELP)
+        return 1
     except BlockedError as exc:
         print(f"Blocked by Vinted: {exc}. Not retrying.")
         return 1

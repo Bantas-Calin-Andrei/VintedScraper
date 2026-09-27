@@ -20,7 +20,8 @@ class ParseError(ValueError):
     """The page did not have the structure we expect. Vinted may have changed something."""
 
 
-_PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,\s*("(?:[^"\\]|\\.)*")\]\)', re.S)
+_PUSH_PREFIX = "self.__next_f.push([1,"
+_JSON_DECODER = json.JSONDecoder()
 _LABEL_RES = {
     "brand": re.compile(r"Brand:\s*([^,]+)"),
     "condition": re.compile(r"Stare:\s*([^,]+)"),
@@ -30,13 +31,25 @@ _LABEL_HINT = re.compile(r"(Brand|Stare|Mărime):")
 
 
 def rsc_text(html: str) -> str:
-    """Join all payload chunks of a page into one string."""
+    """Join all payload chunks of a page into one string.
+
+    Uses find + the C JSON decoder rather than a regex: a regex over multi-MB string literals
+    needs ~140x the chunk size in memory and crashed on real catalog pages (MemoryError).
+    """
     parts = []
-    for match in _PUSH_RE.finditer(html):
+    pos = html.find(_PUSH_PREFIX)
+    while pos >= 0:
+        start = pos + len(_PUSH_PREFIX)
+        while start < len(html) and html[start].isspace():
+            start += 1
         try:
-            parts.append(json.loads(match.group(1)))
+            chunk, end = _JSON_DECODER.raw_decode(html, start)
         except json.JSONDecodeError:
-            continue
+            end = start
+        else:
+            if isinstance(chunk, str):
+                parts.append(chunk)
+        pos = html.find(_PUSH_PREFIX, end)
     return "".join(parts)
 
 

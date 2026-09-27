@@ -33,3 +33,14 @@ def test_console_output_survives_romanian_text():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, env=env)
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert "Mărime" in result.stdout.decode("utf-8")
+
+
+def test_run_refuses_to_start_when_another_tracker_holds_the_lock(tmp_path, monkeypatch, capsys):
+    import vinted_tracker.__main__ as cli
+    from vinted_tracker.lock import single_instance
+
+    monkeypatch.setattr(cli, "LOCK_PATH", tmp_path / "tracker.lock")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    with single_instance(tmp_path / "tracker.lock"):
+        assert cli.main(["run"]) == 1
+    assert "already running" in capsys.readouterr().out
