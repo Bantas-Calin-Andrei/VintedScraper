@@ -36,14 +36,14 @@ queries:
 discovery:
   poll_minutes: 5
   max_item_age_minutes: 60
-  max_new_per_day: 250
+  max_new_per_day: 150
   whole_price_prefilter: true   # skip catalog prices with decimals (currency-converted = foreign seller); validated in Task 8
 
 recheck:
   schedule:          # [item age below N hours, check every M hours]
     - [24, 2]
     - [168, 8]
-    - [720, 24]      # the last row's age is where tracking stops (30 days)
+    - [720, 36]      # the last row's age is where tracking stops (30 days)
   uncertain_gap_hours: 48
 
 rate:

@@ -71,7 +71,7 @@ status ─► status.json (progress / health snapshot)
 2. For each item not already known, apply these filters:
    - **New:** upload age < 60 min **and** item ID ≥ (highest seen ID − tolerance), which rejects bumped old listings.
    - **Romanian seller:** the seller's original currency is `RON`. Phase 0 checks whether this is available on the catalog page. If not, it's checked on the first item-page visit, and non-RON items are dropped at that point.
-   - **Daily cap:** stop adding once `max_new_per_day` (default 250) is reached.
+   - **Daily cap:** stop adding once `max_new_per_day` (150, chosen 2026-09-27 to fit the page budget) is reached, paced as a per-query hourly quota so the sample spreads over the day.
 3. Insert the item with `first_seen_at`, `uploaded_at_estimate` and the static attributes (brand, category, size, condition, listed price, seller id, watchlist query).
 
 ### 4.2 Recheck schedule (all intervals configurable)
@@ -79,7 +79,7 @@ status ─► status.json (progress / health snapshot)
 |---|---|
 | < 24 h | 2 h |
 | 1–7 days | 8 h |
-| 7–30 days | 24 h |
+| 7–30 days | 36 h (changed from 24 h on 2026-09-27 to fit the page budget) |
 | > 30 days | stop, final status `unsold_30d` |
 
 If the due queue exceeds the page budget, intervals stretch in proportion. The rate limit never increases.
