@@ -163,6 +163,8 @@ def _int(value: Any) -> int | None:
 
 
 _SOLD_RE = re.compile(r"\bVândut\b")
+_NOT_FOUND_TEXT = "Pagina nu a fost găsită"
+_SESSION_REFRESH = "/session-refresh"
 _UPLOAD_RE = re.compile(r"incarcat\s+(?:acum\s+)?([^\n]{1,40})")
 _NUMBER_RE = re.compile(r"(\d+)\s+(?:de\s+)?(.*)")
 _ARTICLE_RE = re.compile(r"(un|o|cateva)\s+(.*)")
@@ -178,16 +180,19 @@ _UNITS = (
 
 
 def parse_item(page: FetchedPage, item_id: int) -> ItemSnapshot:
+    if _SESSION_REFRESH in page.url:
+        # Vinted briefly bounced the browser through a session refresh: says nothing about the listing.
+        raise ParseError(f"item {item_id}: session refresh redirect, try again later")
     if page.status in (404, 410) or not re.search(rf"/items/{item_id}(?:[-/?#]|$)", page.url):
-        return ItemSnapshot(
-            item_id=item_id, status=Status.DELETED, price=None, currency=None, favourite_count=None,
-            catalog_id=None, upload_age=None, raw={"http_status": page.status, "final_url": page.url},
-        )
+        return _deleted(item_id, page)
     dicts = all_dicts(page.html)
     buy = _first(dicts, lambda d: "can_buy" in d and str(d.get("item_id")) == str(item_id))
     if buy is None:
         buy = _first(dicts, lambda d: "can_buy" in d and "is_reserved" in d)
     if buy is None:
+        if _NOT_FOUND_TEXT in page.text:
+            # Vinted serves some removed listings as a normal page (HTTP 200) saying "page not found".
+            return _deleted(item_id, page, not_found_page=True)
         raise ParseError(f"item {item_id}: no buy-state object in page data")
     offer = _first(
         dicts, lambda d: isinstance(d.get("price"), dict) and "currency_code" in d["price"] and "seller_id" in d
@@ -205,6 +210,16 @@ def parse_item(page: FetchedPage, item_id: int) -> ItemSnapshot:
         catalog_id=_int(catalog.get("catalog_id")) if catalog else None,
         upload_age=parse_upload_age(page.text),
         raw={"buy": buy, "offer": offer, "sold_text": sold_text, "http_status": page.status},
+    )
+
+
+def _deleted(item_id: int, page: FetchedPage, *, not_found_page: bool = False) -> ItemSnapshot:
+    raw = {"http_status": page.status, "final_url": page.url}
+    if not_found_page:
+        raw["not_found_page"] = True
+    return ItemSnapshot(
+        item_id=item_id, status=Status.DELETED, price=None, currency=None, favourite_count=None,
+        catalog_id=None, upload_age=None, raw=raw,
     )
 
 

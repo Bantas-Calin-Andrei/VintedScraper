@@ -90,3 +90,27 @@ def test_missing_buy_state_raises():
 )
 def test_parse_upload_age(text, expected):
     assert parse_upload_age(text) == expected
+
+
+def test_soft_404_not_found_page_is_deleted():
+    page = FetchedPage(
+        url=f"{BASE}/items/555-geaca", status=200, html="<html></html>",
+        text="Pagina nu a fost găsită\nVerifică dacă linkul este corect",
+    )
+    snap = parse_item(page, 555)
+    assert snap.status is Status.DELETED
+    assert snap.raw["not_found_page"] is True
+
+
+def test_real_not_found_page_is_deleted():
+    from helpers import load_fixture
+
+    assert parse_item(load_fixture("item_not_found"), 10164615314).status is Status.DELETED
+
+
+def test_session_refresh_redirect_is_not_mistaken_for_deleted():
+    page = FetchedPage(
+        url=f"{BASE}/session-refresh?ref_url=%2Fitems%2F555-geaca", status=200, html="<html></html>", text=""
+    )
+    with pytest.raises(ParseError):
+        parse_item(page, 555)
