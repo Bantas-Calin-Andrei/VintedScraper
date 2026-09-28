@@ -40,6 +40,7 @@ def test_run_refuses_to_start_when_another_tracker_holds_the_lock(tmp_path, monk
     from vinted_tracker.lock import single_instance
 
     monkeypatch.setattr(cli, "LOCK_PATH", tmp_path / "tracker.lock")
+    monkeypatch.setattr(cli, "setup_logging", lambda: None)  # never attach the real logs/tracker.log from tests
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     with single_instance(tmp_path / "tracker.lock"):
         assert cli.main(["run"]) == 1
