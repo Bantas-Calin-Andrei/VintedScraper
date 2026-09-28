@@ -108,3 +108,11 @@ def test_out_of_scope_items_are_not_rechecked_or_counted(conn):
     assert [r["id"] for r in db.due_items(conn, later, limit=10)] == [1]
     assert db.count_due(conn, later) == 1
     assert db.status_counts(conn) == {"tracking": 1, "out_of_scope": 1}
+
+
+def test_out_of_scope_items_do_not_use_up_the_daily_quota(conn):
+    track(conn, 1)
+    track(conn, 2)
+    db.mark_out_of_scope(conn, [2])
+    assert db.count_new_since(conn, T0) == 1
+    assert db.count_new_since(conn, T0, "streetwear") == 1

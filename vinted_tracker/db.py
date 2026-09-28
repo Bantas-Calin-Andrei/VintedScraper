@@ -153,9 +153,9 @@ def set_query_state(conn: psycopg.Connection, name: str, high_water_id: int, pol
 
 def count_new_since(conn: psycopg.Connection, since: datetime, query_name: str | None = None) -> int:
     if query_name is None:
-        sql, params = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s", (since,)
+        sql, params = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND NOT out_of_scope", (since,)
     else:
-        sql = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND query_name = %s"
+        sql = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND query_name = %s AND NOT out_of_scope"
         params = (since, query_name)
     return conn.execute(sql, params).fetchone()["n"]
 
