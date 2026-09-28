@@ -3,10 +3,12 @@
 base_url: https://www.vinted.ro
 headless: true
 
-# catalog 5 = Men. Brand IDs from vinted.ro /api/v2/brands (looked up 2026-09-27).
+# catalog 2050 = Men > Clothing (Bărbați > Haine); status 6 = Nou cu etichetă, 1 = Nou fără etichetă.
+# Brand IDs from vinted.ro /api/v2/brands (looked up 2026-09-27).
 queries:
   - name: streetwear
-    catalog_ids: [5]
+    catalog_ids: [2050]
+    status_ids: [6, 1]
     brand_ids:
       - 53       # Nike
       - 5977     # Nike Air
@@ -17,7 +19,8 @@ queries:
       - 872289   # Carhartt WIP
       - 441      # Stüssy
   - name: premium_casual
-    catalog_ids: [5]
+    catalog_ids: [2050]
+    status_ids: [6, 1]
     brand_ids:
       - 88       # Ralph Lauren
       - 4273     # Polo Ralph Lauren
@@ -27,7 +30,8 @@ queries:
       - 6039857  # BOSS Hugo Boss
       - 1707868  # HUGO Hugo Boss
   - name: designer   # no price filter on purpose: cheap and possibly fake listings are tracked too
-    catalog_ids: [5]
+    catalog_ids: [2050]
+    status_ids: [6, 1]
     brand_ids:
       - 73306    # Stone Island
       - 73952    # C.P. Company
@@ -38,6 +42,7 @@ discovery:
   max_item_age_minutes: 60
   max_new_per_day: 150
   whole_price_prefilter: true   # skip catalog prices with decimals (currency-converted = foreign seller); validated in Task 8
+  allowed_conditions: [Nou cu etichetă, Nou fără etichetă]   # safety check on each listing
 
 recheck:
   schedule:          # [item age below N hours, check every M hours]

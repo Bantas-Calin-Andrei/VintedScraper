@@ -84,3 +84,11 @@ def test_write_report(conn, tmp_path):
     path = tmp_path / "report.xlsx"
     write_report(frames, path)
     assert set(pd.read_excel(path, sheet_name=None)) == set(frames)
+
+
+def test_out_of_scope_items_are_left_out_of_the_report(conn):
+    seed(conn)
+    db.mark_out_of_scope(conn, [4])
+    frames = build_report(conn, "https://www.vinted.ro")
+    assert 4 not in set(frames["Items"]["id"])
+    assert "adidas" not in set(frames["By brand"]["brand"])

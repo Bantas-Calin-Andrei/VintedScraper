@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS items (
     next_check_at    timestamptz,
     raw_first        jsonb NOT NULL
 );
+ALTER TABLE items ADD COLUMN IF NOT EXISTS out_of_scope boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS items_due_idx ON items (next_check_at) WHERE final_status IS NULL;
 
 CREATE TABLE IF NOT EXISTS observations (
@@ -163,7 +164,7 @@ def due_items(conn: psycopg.Connection, now: datetime, limit: int) -> list[dict]
     return conn.execute(
         """
         SELECT id, url, uploaded_at, next_check_at FROM items
-        WHERE final_status IS NULL AND next_check_at <= %s
+        WHERE final_status IS NULL AND NOT out_of_scope AND next_check_at <= %s
         ORDER BY next_check_at, id
         LIMIT %s
         """,
@@ -173,14 +174,22 @@ def due_items(conn: psycopg.Connection, now: datetime, limit: int) -> list[dict]
 
 def count_due(conn: psycopg.Connection, now: datetime) -> int:
     return conn.execute(
-        "SELECT count(*) AS n FROM items WHERE final_status IS NULL AND next_check_at <= %s", (now,)
+        "SELECT count(*) AS n FROM items WHERE final_status IS NULL AND NOT out_of_scope AND next_check_at <= %s",
+        (now,),
     ).fetchone()["n"]
 
 
 def next_due_at(conn: psycopg.Connection) -> datetime | None:
     return conn.execute(
-        "SELECT min(next_check_at) AS t FROM items WHERE final_status IS NULL"
+        "SELECT min(next_check_at) AS t FROM items WHERE final_status IS NULL AND NOT out_of_scope"
     ).fetchone()["t"]
+
+
+def mark_out_of_scope(conn: psycopg.Connection, item_ids: list[int]) -> int:
+    """Stop checking these items and leave them out of reports; their data stays in the database."""
+    return conn.execute(
+        "UPDATE items SET out_of_scope = true WHERE id = ANY(%s) AND NOT out_of_scope", (list(item_ids),)
+    ).rowcount
 
 
 def add_observation(
@@ -238,7 +247,8 @@ def update_item_after_check(
 
 def status_counts(conn: psycopg.Connection) -> dict[str, int]:
     rows = conn.execute(
-        "SELECT coalesce(final_status, 'tracking') AS status, count(*) AS n FROM items GROUP BY 1"
+        "SELECT CASE WHEN out_of_scope THEN 'out_of_scope' ELSE coalesce(final_status, 'tracking') END AS status,"
+        " count(*) AS n FROM items GROUP BY 1"
     ).fetchall()
     return {r["status"]: r["n"] for r in rows}
 

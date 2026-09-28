@@ -106,3 +106,26 @@ def test_hourly_quota_per_query_spreads_the_daily_cap(conn, tmp_path):
     assert result.tracked == 1
     assert item_url(BASE, 12) not in fetcher.calls
     assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "hourly_cap"
+
+
+def test_catalog_url_includes_condition_filter():
+    q = Query("x", (2050,), (53,), status_ids=(6, 1))
+    assert build_catalog_url(BASE, q) == (
+        "https://www.vinted.ro/catalog?catalog[]=2050&brand_ids[]=53&status_ids[]=6&status_ids[]=1&order=newest_first"
+    )
+
+
+def test_items_in_other_conditions_are_skipped_without_fetching(conn, tmp_path):
+    db.set_query_state(conn, "streetwear", 10, NOW - timedelta(minutes=5))
+    page = FetchedPage(
+        url=CAT1, status=200,
+        html=catalog_html(catalog_entry(12, condition="Foarte bună"), catalog_entry(11, condition="Nou cu etichetă"),
+                          catalog_entry(10)),
+        text="",
+    )
+    fetcher = FakeFetcher({CAT1: page, item_url(BASE, 11): item_page(11)})
+    cfg = make_config(allowed_conditions=("Nou cu etichetă", "Nou fără etichetă"))
+    result = run(conn, fetcher, cfg=cfg, tmp_path=tmp_path)
+    assert result.tracked == 1
+    assert item_url(BASE, 12) not in fetcher.calls
+    assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "condition"

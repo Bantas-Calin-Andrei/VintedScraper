@@ -98,3 +98,13 @@ def test_runs(conn):
     row = conn.execute("SELECT * FROM runs WHERE id = %s", (run_id,)).fetchone()
     assert (row["pages_loaded"], row["items_discovered"], row["parse_errors"]) == (5, 2, 1)
     assert row["ended_at"] == T0 + timedelta(hours=1)
+
+
+def test_out_of_scope_items_are_not_rechecked_or_counted(conn):
+    track(conn, 1, next_check=T0 + timedelta(hours=1))
+    track(conn, 2, next_check=T0 + timedelta(hours=1))
+    assert db.mark_out_of_scope(conn, [2]) == 1
+    later = T0 + timedelta(days=1)
+    assert [r["id"] for r in db.due_items(conn, later, limit=10)] == [1]
+    assert db.count_due(conn, later) == 1
+    assert db.status_counts(conn) == {"tracking": 1, "out_of_scope": 1}

@@ -112,6 +112,7 @@ def make_config(**overrides) -> Config:
         max_item_age_minutes=60.0,
         max_new_per_day=250,
         whole_price_prefilter=True,
+        allowed_conditions=(),
         recheck_schedule=((24.0, 2.0), (168.0, 8.0), (720.0, 24.0)),
         uncertain_gap_hours=48.0,
         min_delay_s=8.0,

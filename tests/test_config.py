@@ -92,3 +92,22 @@ def test_project_config_is_valid():
     cfg = load_config(Path(__file__).resolve().parents[1] / "config.yaml", ENV)
     assert {q.name for q in cfg.queries} == {"streetwear", "premium_casual", "designer"}
     assert all(q.brand_ids for q in cfg.queries)
+
+
+def test_status_ids_and_allowed_conditions(tmp_path):
+    text = VALID.replace("    brand_ids: [53, 14]", "    brand_ids: [53, 14]\n    status_ids: [6, 1]").replace(
+        "  whole_price_prefilter: true",
+        "  whole_price_prefilter: true\n  allowed_conditions: [Nou cu etichetă, Nou fără etichetă]",
+    )
+    assert "status_ids" in text and "allowed_conditions" in text
+    cfg = load_config(write(tmp_path, text), ENV)
+    assert cfg.queries[0].status_ids == (6, 1)
+    assert cfg.queries[1].status_ids == ()
+    assert cfg.allowed_conditions == ("Nou cu etichetă", "Nou fără etichetă")
+
+
+def test_project_config_tracks_new_mens_clothing_only():
+    cfg = load_config(Path(__file__).resolve().parents[1] / "config.yaml", ENV)
+    assert all(q.catalog_ids == (2050,) for q in cfg.queries)
+    assert all(set(q.status_ids) == {6, 1} for q in cfg.queries)
+    assert set(cfg.allowed_conditions) == {"Nou cu etichetă", "Nou fără etichetă"}

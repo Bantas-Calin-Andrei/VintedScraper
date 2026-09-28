@@ -33,6 +33,7 @@ class DiscoverResult:
 def build_catalog_url(base_url: str, q: Query, page: int = 1) -> str:
     params: list[tuple[str, object]] = [("catalog[]", c) for c in q.catalog_ids]
     params += [("brand_ids[]", b) for b in q.brand_ids]
+    params += [("status_ids[]", s) for s in q.status_ids]
     if q.price_from is not None:
         params.append(("price_from", _number(q.price_from)))
     if q.price_to is not None:
@@ -122,6 +123,8 @@ def hourly_quota(cfg: Config) -> int:
 def _catalog_reject_reason(
     conn: psycopg.Connection, cfg: Config, q: Query, item: CatalogItem, now: datetime
 ) -> str | None:
+    if cfg.allowed_conditions and item.condition not in cfg.allowed_conditions:
+        return "condition"  # safety net in case Vinted ignores the status_ids filter
     if db.count_new_since(conn, now - timedelta(days=1)) >= cfg.max_new_per_day:
         return "daily_cap"
     if db.count_new_since(conn, now - timedelta(hours=1), q.name) >= hourly_quota(cfg):
