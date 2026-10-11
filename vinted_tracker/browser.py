@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -152,7 +153,8 @@ def save_debug_page(page: FetchedPage, label: str, debug_dir: Path, max_files: i
     """Keep a page that failed to parse so the parser can be fixed later (only the newest `max_files`)."""
     debug_dir.mkdir(parents=True, exist_ok=True)
     stamp = utcnow().strftime("%Y%m%dT%H%M%S")
-    html_path = debug_dir / f"{stamp}-{label}.html"
+    safe_label = re.sub(r"[^\w.-]", "_", label)  # group names come from the dashboard
+    html_path = debug_dir / f"{stamp}-{safe_label}.html"
     html_path.write_text(page.html, encoding="utf-8")
     html_path.with_suffix(".txt").write_text(
         f"URL: {page.url}\nHTTP: {page.status}\n\n{page.text}", encoding="utf-8"

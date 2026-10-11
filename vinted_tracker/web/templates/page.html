@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vinted tracker</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/chart.umd.min.js"></script>
+  <script src="/static/app.js" defer></script>
+  <script src="/static/settings.js" defer></script>
+  <script src="/static/charts.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <strong class="title">Vinted tracker</strong>
+    <div id="status" class="status" hx-get="/fragments/status" hx-trigger="load, every 30s">Loading…</div>
+    <div class="actions">
+      <button type="button" id="open-settings" hx-get="/fragments/settings" hx-target="#settings-panel" onclick="openSettings()">⚙ Settings</button>
+      <a class="button" href="/export.xlsx">⬇ Excel</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="tiles" class="tiles" hx-get="/fragments/tiles" hx-trigger="load, every 30s"></section>
+
+    <section class="charts">
+      {% for dim, caption in [("brand", "by brand"), ("type", "by product type"), ("size", "by size"), ("price_band", "by price band")] %}
+      <figure class="chart">
+        <figcaption>Median hours to sell · {{ caption }}</figcaption>
+        <div class="chart-box"><canvas id="chart-{{ dim }}"></canvas></div>
+        <p class="empty" id="empty-{{ dim }}" hidden>Not enough sold items yet (needs ≥ 3 per bar)</p>
+      </figure>
+      {% endfor %}
+    </section>
+
+    <section class="add-product">
+      <form class="add-form" hx-post="/manual" hx-target="#manual" hx-on::after-request="if (event.detail.successful) this.reset()">
+        <h2>Add a product</h2>
+        <input name="link" type="text" placeholder="Paste a vinted.ro listing link" autocomplete="off" aria-label="Listing link">
+        <button type="submit" class="primary">Add</button>
+      </form>
+      <div id="manual" hx-get="/fragments/manual" hx-trigger="load, every 30s"></div>
+    </section>
+
+    <section class="products">
+      <form id="filters" class="filters" hx-get="/fragments/products" hx-target="#products"
+            hx-trigger="change, keyup changed delay:400ms from:#q" onsubmit="return false">
+        <h2>Products</h2>
+        <input id="q" name="q" type="search" placeholder="Search title or brand" autocomplete="off">
+        <select name="status">
+          <option value="">All statuses</option>
+          {% for value, label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+        </select>
+        <select name="brand">
+          <option value="">All brands</option>
+          {% for b in brands %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+        </select>
+        <select name="type">
+          <option value="">All types</option>
+          {% for id, name in types %}<option value="{{ id }}">{{ name }}</option>{% endfor %}
+        </select>
+        <select name="sort" aria-label="Sort">
+          <option value="newest">Newest first</option>
+          <option value="price_asc">Price: low → high</option>
+          <option value="price_desc">Price: high → low</option>
+        </select>
+        <input type="hidden" id="page" name="page" value="1">
+      </form>
+      <div id="products" hx-get="/fragments/products" hx-trigger="load, every 30s" hx-include="#filters"></div>
+    </section>
+  </main>
+
+  <aside id="settings-panel" class="panel" aria-label="Settings"></aside>
+</body>
+</html>

@@ -20,6 +20,8 @@ class Query:
     brand_ids: tuple[int, ...]
     price_from: float | None = None
     price_to: float | None = None
+    status_ids: tuple[int, ...] = ()  # Vinted condition filter, e.g. 6 = new with tags, 1 = new without tags
+    size_ids: tuple[int, ...] = ()  # Vinted size filter; empty = all sizes
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class Config:
     max_item_age_minutes: float
     max_new_per_day: int
     whole_price_prefilter: bool
+    allowed_conditions: tuple[str, ...]  # listing conditions to track, as shown on vinted.ro; empty = all
     recheck_schedule: tuple[tuple[float, float], ...]  # (max_age_hours, interval_hours), ascending
     uncertain_gap_hours: float
     min_delay_s: float
@@ -58,6 +61,7 @@ def load_config(path: str | Path, env: Mapping[str, str] | None = None) -> Confi
             max_item_age_minutes=float(discovery["max_item_age_minutes"]),
             max_new_per_day=int(discovery["max_new_per_day"]),
             whole_price_prefilter=bool(discovery.get("whole_price_prefilter", True)),
+            allowed_conditions=tuple(str(c) for c in discovery.get("allowed_conditions") or ()),
             recheck_schedule=tuple((float(age), float(every)) for age, every in recheck["schedule"]),
             uncertain_gap_hours=float(recheck["uncertain_gap_hours"]),
             min_delay_s=float(rate["min_delay_s"]),
@@ -80,6 +84,8 @@ def _query(raw: dict[str, Any]) -> Query:
         brand_ids=tuple(int(x) for x in raw.get("brand_ids") or ()),
         price_from=_optional_float(raw.get("price_from")),
         price_to=_optional_float(raw.get("price_to")),
+        status_ids=tuple(int(x) for x in raw.get("status_ids") or ()),
+        size_ids=tuple(int(x) for x in raw.get("size_ids") or ()),
     )
 
 

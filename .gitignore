@@ -14,3 +14,6 @@ logs/
 .env
 *.egg-info/
 spike/*.log
+tracker.lock
+.superpowers/brainstorm/
+browser-profile-lookup/

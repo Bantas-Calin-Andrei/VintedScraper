@@ -33,3 +33,34 @@ def test_console_output_survives_romanian_text():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, env=env)
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert "Mărime" in result.stdout.decode("utf-8")
+
+
+def test_run_refuses_to_start_when_another_tracker_holds_the_lock(tmp_path, monkeypatch, capsys):
+    import vinted_tracker.__main__ as cli
+    from vinted_tracker.lock import single_instance
+
+    monkeypatch.setattr(cli, "LOCK_PATH", tmp_path / "tracker.lock")
+    monkeypatch.setattr(cli, "setup_logging", lambda: None)  # never attach the real logs/tracker.log from tests
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    with single_instance(tmp_path / "tracker.lock"):
+        assert cli.main(["run"]) == 1
+    assert "already running" in capsys.readouterr().out
+
+
+def test_parser_reads_dashboard_port():
+    args = build_parser().parse_args(["dashboard", "--port", "8123"])
+    assert (args.cmd, args.port) == ("dashboard", 8123)
+    assert build_parser().parse_args(["dashboard"]).port == 8000
+
+
+def test_port_is_free_detects_a_busy_port():
+    import socket
+
+    from vinted_tracker.__main__ import port_is_free
+
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        assert port_is_free(port) is False
+    assert port_is_free(port) is True

@@ -20,7 +20,8 @@ class ParseError(ValueError):
     """The page did not have the structure we expect. Vinted may have changed something."""
 
 
-_PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,\s*("(?:[^"\\]|\\.)*")\]\)', re.S)
+_PUSH_PREFIX = "self.__next_f.push([1,"
+_JSON_DECODER = json.JSONDecoder()
 _LABEL_RES = {
     "brand": re.compile(r"Brand:\s*([^,]+)"),
     "condition": re.compile(r"Stare:\s*([^,]+)"),
@@ -30,13 +31,25 @@ _LABEL_HINT = re.compile(r"(Brand|Stare|Mărime):")
 
 
 def rsc_text(html: str) -> str:
-    """Join all payload chunks of a page into one string."""
+    """Join all payload chunks of a page into one string.
+
+    Uses find + the C JSON decoder rather than a regex: a regex over multi-MB string literals
+    needs ~140x the chunk size in memory and crashed on real catalog pages (MemoryError).
+    """
     parts = []
-    for match in _PUSH_RE.finditer(html):
+    pos = html.find(_PUSH_PREFIX)
+    while pos >= 0:
+        start = pos + len(_PUSH_PREFIX)
+        while start < len(html) and html[start].isspace():
+            start += 1
         try:
-            parts.append(json.loads(match.group(1)))
+            chunk, end = _JSON_DECODER.raw_decode(html, start)
         except json.JSONDecodeError:
-            continue
+            end = start
+        else:
+            if isinstance(chunk, str):
+                parts.append(chunk)
+        pos = html.find(_PUSH_PREFIX, end)
     return "".join(parts)
 
 
@@ -150,6 +163,8 @@ def _int(value: Any) -> int | None:
 
 
 _SOLD_RE = re.compile(r"\bVândut\b")
+_NOT_FOUND_TEXT = "Pagina nu a fost găsită"
+_SESSION_REFRESH = "/session-refresh"
 _UPLOAD_RE = re.compile(r"incarcat\s+(?:acum\s+)?([^\n]{1,40})")
 _NUMBER_RE = re.compile(r"(\d+)\s+(?:de\s+)?(.*)")
 _ARTICLE_RE = re.compile(r"(un|o|cateva)\s+(.*)")
@@ -165,16 +180,19 @@ _UNITS = (
 
 
 def parse_item(page: FetchedPage, item_id: int) -> ItemSnapshot:
+    if _SESSION_REFRESH in page.url:
+        # Vinted briefly bounced the browser through a session refresh: says nothing about the listing.
+        raise ParseError(f"item {item_id}: session refresh redirect, try again later")
     if page.status in (404, 410) or not re.search(rf"/items/{item_id}(?:[-/?#]|$)", page.url):
-        return ItemSnapshot(
-            item_id=item_id, status=Status.DELETED, price=None, currency=None, favourite_count=None,
-            catalog_id=None, upload_age=None, raw={"http_status": page.status, "final_url": page.url},
-        )
+        return _deleted(item_id, page)
     dicts = all_dicts(page.html)
     buy = _first(dicts, lambda d: "can_buy" in d and str(d.get("item_id")) == str(item_id))
     if buy is None:
         buy = _first(dicts, lambda d: "can_buy" in d and "is_reserved" in d)
     if buy is None:
+        if _NOT_FOUND_TEXT in page.text:
+            # Vinted serves some removed listings as a normal page (HTTP 200) saying "page not found".
+            return _deleted(item_id, page, not_found_page=True)
         raise ParseError(f"item {item_id}: no buy-state object in page data")
     offer = _first(
         dicts, lambda d: isinstance(d.get("price"), dict) and "currency_code" in d["price"] and "seller_id" in d
@@ -192,6 +210,16 @@ def parse_item(page: FetchedPage, item_id: int) -> ItemSnapshot:
         catalog_id=_int(catalog.get("catalog_id")) if catalog else None,
         upload_age=parse_upload_age(page.text),
         raw={"buy": buy, "offer": offer, "sold_text": sold_text, "http_status": page.status},
+    )
+
+
+def _deleted(item_id: int, page: FetchedPage, *, not_found_page: bool = False) -> ItemSnapshot:
+    raw = {"http_status": page.status, "final_url": page.url}
+    if not_found_page:
+        raw["not_found_page"] = True
+    return ItemSnapshot(
+        item_id=item_id, status=Status.DELETED, price=None, currency=None, favourite_count=None,
+        catalog_id=None, upload_age=None, raw=raw,
     )
 
 
@@ -235,3 +263,26 @@ def parse_upload_age(text: str) -> timedelta | None:
         if pattern.match(rest):
             return unit * count
     return None
+
+
+_DETAIL_CODES = {"brand": "brand", "size": "size", "status": "condition"}
+
+
+def parse_item_details(page: FetchedPage) -> dict:
+    """Title, brand, size and condition from an item page (used for listings added by hand)."""
+    dicts = all_dicts(page.html)
+    details: dict = {"title": None, "brand": None, "size": None, "condition": None}
+    offer = _first(
+        dicts, lambda d: isinstance(d.get("price"), dict) and "currency_code" in d["price"] and "seller_id" in d
+    )
+    if offer and isinstance(offer.get("title"), str):
+        details["title"] = offer["title"]
+    holder = _first(dicts, lambda d: isinstance(d.get("attributes"), list))
+    for attribute in (holder or {}).get("attributes", []):
+        if not isinstance(attribute, dict):
+            continue
+        key = _DETAIL_CODES.get(attribute.get("code"))
+        value = (attribute.get("data") or {}).get("value")
+        if key and isinstance(value, str) and details[key] is None:
+            details[key] = value
+    return details

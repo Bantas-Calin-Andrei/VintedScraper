@@ -32,12 +32,13 @@ SELECT i.id, i.title, i.brand, i.catalog_id, i.size, i.condition,
        round((extract(epoch FROM i.sold_after_max) / 3600)::numeric, 1)::float8 AS sold_after_max_h,
        round((extract(epoch FROM (i.sold_after_min + i.sold_after_max) / 2) / 3600)::numeric, 1)::float8
            AS sold_after_h,
-       i.uncertain, i.query_name,
+       i.uncertain, i.query_name, i.source,
        %(base)s || i.url AS link
 FROM items i
 LEFT JOIN LATERAL (
     SELECT min(o.price_ron)::float8 AS lowest_price_ron FROM observations o WHERE o.item_id = i.id
 ) lp ON true
+WHERE NOT i.out_of_scope
 ORDER BY i.uploaded_at DESC
 """
 
@@ -49,6 +50,7 @@ WITH base AS (
            now() - i.uploaded_at AS age,
            (SELECT min(o.price_ron) FROM observations o WHERE o.item_id = i.id) AS lowest_price
     FROM items i
+    WHERE NOT i.out_of_scope AND i.source = 'auto'
 )
 SELECT grp AS "{label}",
        count(*) AS tracked,
@@ -80,6 +82,7 @@ SELECT i.id, i.title, i.brand,
        coalesce(i.final_status, 'tracking') AS status
 FROM items i
 JOIN observations o ON o.item_id = i.id
+WHERE NOT i.out_of_scope
 GROUP BY i.id
 HAVING min(o.price_ron) < i.price_listed_ron
 ORDER BY drop_pct DESC

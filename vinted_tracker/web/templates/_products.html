@@ -1,0 +1,35 @@
+<p class="muted">{{ total }} listing{{ "" if total == 1 else "s" }}</p>
+<div class="table-wrap">
+<table>
+  <thead><tr>
+    <th>Status</th><th>Brand</th><th>Item</th><th>Type</th><th>Size</th><th>Price</th>
+    <th>Listed</th><th>Sold after</th><th>♥</th><th>Last check</th><th>Next check</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><span class="pill {{ r.status }}">{{ r.status_label }}</span></td>
+      <td>{{ r.brand }}</td>
+      <td>{% if r.manual %}<span class="tag manual">MANUAL</span> {% endif %}<a href="{{ r.link }}" target="_blank" rel="noopener">{{ r.title }}</a></td>
+      <td>{{ r.type }}</td>
+      <td>{{ r.size }}</td>
+      <td class="num">{{ r.price_text }}</td>
+      <td>{{ r.listed_ago }}</td>
+      <td>{{ r.sold_after_text or "–" }}</td>
+      <td class="num">{{ r.favourites if r.favourites is not none else "–" }}</td>
+      <td>{{ r.last_checked_ago }}</td>
+      <td>{{ r.next_check_in or "–" }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="11" class="empty">No listings match these filters yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}<button type="button" onclick="setPage({{ page - 1 }})">← Newer</button>{% endif %}
+  <span>Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<button type="button" onclick="setPage({{ page + 1 }})">Older →</button>{% endif %}
+</nav>
+{% endif %}

@@ -98,3 +98,59 @@ def test_runs(conn):
     row = conn.execute("SELECT * FROM runs WHERE id = %s", (run_id,)).fetchone()
     assert (row["pages_loaded"], row["items_discovered"], row["parse_errors"]) == (5, 2, 1)
     assert row["ended_at"] == T0 + timedelta(hours=1)
+
+
+def test_out_of_scope_items_are_not_rechecked_or_counted(conn):
+    track(conn, 1, next_check=T0 + timedelta(hours=1))
+    track(conn, 2, next_check=T0 + timedelta(hours=1))
+    assert db.mark_out_of_scope(conn, [2]) == 1
+    later = T0 + timedelta(days=1)
+    assert [r["id"] for r in db.due_items(conn, later, limit=10)] == [1]
+    assert db.count_due(conn, later) == 1
+    assert db.status_counts(conn) == {"tracking": 1, "out_of_scope": 1}
+
+
+def test_out_of_scope_items_do_not_use_up_the_daily_quota(conn):
+    track(conn, 1)
+    track(conn, 2)
+    db.mark_out_of_scope(conn, [2])
+    assert db.count_new_since(conn, T0) == 1
+    assert db.count_new_since(conn, T0, "streetwear") == 1
+
+
+def test_watch_settings_row_versions(conn):
+    assert db.get_watch_settings(conn) is None
+    assert db.save_watch_settings(conn, {"a": 1}, T0) == 1
+    assert db.save_watch_settings(conn, {"a": 2}, T0) == 2
+    assert db.get_watch_settings(conn) == (2, {"a": 2})
+
+
+def test_tracker_status_and_brand_cache(conn):
+    assert db.get_tracker_status(conn) is None
+    db.set_tracker_status(conn, {"health": "ok"}, T0)
+    db.set_tracker_status(conn, {"health": "blocked"}, T0 + timedelta(minutes=1))
+    assert db.get_tracker_status(conn) == ({"health": "blocked"}, T0 + timedelta(minutes=1))
+    assert db.get_brand_cache(conn, "nike") is None
+    db.put_brand_cache(conn, "nike", [{"id": 53, "title": "Nike"}], T0)
+    db.put_brand_cache(conn, "nike", [{"id": 53, "title": "Nike", "item_count": 5}], T0)
+    assert db.get_brand_cache(conn, "nike") == ([{"id": 53, "title": "Nike", "item_count": 5}], T0)
+
+
+def test_manual_request_queue(conn):
+    url = "https://www.vinted.ro/items/9"
+    assert db.add_manual_request(conn, 9, url, T0) == "queued"
+    assert db.add_manual_request(conn, 9, url, T0) == "pending"
+    assert db.next_manual_request(conn)["item_id"] == 9
+    db.finish_manual_request(conn, 9, "failed", "Too old", T0)
+    assert db.next_manual_request(conn) is None
+    assert db.add_manual_request(conn, 9, url, T0 + timedelta(minutes=1)) == "queued"  # a failed link can be retried
+    track(conn, 1001)
+    assert db.add_manual_request(conn, 1001, url, T0) == "exists"
+    assert [r["item_id"] for r in db.recent_manual_requests(conn)] == [9]
+
+
+def test_manual_items_do_not_use_up_the_daily_quota(conn):
+    track(conn, 1)
+    db.insert_item(conn, item=make_catalog_item(2), snap=make_snapshot(2), query_name="manual", uploaded_at=T0,
+                   first_seen_at=T0 + timedelta(minutes=5), next_check_at=T0, source="manual")
+    assert db.count_new_since(conn, T0) == 1

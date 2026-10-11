@@ -71,9 +71,18 @@ def item_page(
     text: str = "Încărcat acum 3 minute",
     status: int = 200,
     url: str | None = None,
+    title: str = "Geacă",
+    brand: str = "Nike",
+    size: str = "XL",
+    condition: str = "Nou fără etichetă",
 ) -> FetchedPage:
+    attributes = [
+        {"code": "brand", "data": {"id": "53", "title": "Brand", "value": brand}, "type": "favouritable"},
+        {"code": "size", "data": {"id": 515, "title": "Mărime", "value": size}, "type": "faq"},
+        {"code": "status", "data": {"id": 50, "title": "Stare", "value": condition}, "type": "faq"},
+    ]
     plugins = [
-        {"name": "make_offer", "data": {"price": {"amount": amount, "currency_code": currency}, "seller_id": "7", "title": "Geacă"}},
+        {"name": "make_offer", "data": {"price": {"amount": amount, "currency_code": currency}, "seller_id": "7", "title": title}},
         {
             "name": "ask_seller",
             "data": {
@@ -86,7 +95,7 @@ def item_page(
                 "seller_id": "7",
             },
         },
-        {"name": "attributes", "data": {"catalog_id": "1803", "favourite_count": 4}},
+        {"name": "attributes", "data": {"catalog_id": "1803", "favourite_count": 4, "attributes": attributes}},
     ]
     html = make_html(rsc_row("a", ["$", "div", None, {"plugins": plugins}]))
     return FetchedPage(url=url or f"{BASE}/items/{item_id}-geaca", status=status, html=html, text=text)
@@ -112,6 +121,7 @@ def make_config(**overrides) -> Config:
         max_item_age_minutes=60.0,
         max_new_per_day=250,
         whole_price_prefilter=True,
+        allowed_conditions=(),
         recheck_schedule=((24.0, 2.0), (168.0, 8.0), (720.0, 24.0)),
         uncertain_gap_hours=48.0,
         min_delay_s=8.0,
@@ -178,3 +188,16 @@ class BlockingFetcher:
         from vinted_tracker.browser import BlockedError
 
         raise BlockedError(f"challenge at {url}")
+
+
+def make_settings(**overrides):
+    from vinted_tracker.watch_settings import Brand, Group, WatchSettings
+
+    values = dict(
+        groups=(Group("streetwear", (Brand(53, "Nike"),)),),
+        catalog_ids=(76, 79),
+        size_ids=(),
+        status_ids=(6, 1),
+    )
+    values.update(overrides)
+    return WatchSettings(**values)

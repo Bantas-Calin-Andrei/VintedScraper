@@ -90,3 +90,44 @@ def test_missing_buy_state_raises():
 )
 def test_parse_upload_age(text, expected):
     assert parse_upload_age(text) == expected
+
+
+def test_soft_404_not_found_page_is_deleted():
+    page = FetchedPage(
+        url=f"{BASE}/items/555-geaca", status=200, html="<html></html>",
+        text="Pagina nu a fost găsită\nVerifică dacă linkul este corect",
+    )
+    snap = parse_item(page, 555)
+    assert snap.status is Status.DELETED
+    assert snap.raw["not_found_page"] is True
+
+
+def test_real_not_found_page_is_deleted():
+    from helpers import load_fixture
+
+    assert parse_item(load_fixture("item_not_found"), 10164615314).status is Status.DELETED
+
+
+def test_session_refresh_redirect_is_not_mistaken_for_deleted():
+    page = FetchedPage(
+        url=f"{BASE}/session-refresh?ref_url=%2Fitems%2F555-geaca", status=200, html="<html></html>", text=""
+    )
+    with pytest.raises(ParseError):
+        parse_item(page, 555)
+
+
+def test_parse_item_details_reads_title_brand_size_condition():
+    from helpers import item_page
+
+    from vinted_tracker.parse import parse_item_details
+
+    details = parse_item_details(item_page(555, title="Geacă TNF", brand="The North Face", size="L",
+                                           condition="Nou cu etichetă"))
+    assert details == {"title": "Geacă TNF", "brand": "The North Face", "size": "L", "condition": "Nou cu etichetă"}
+
+
+def test_parse_item_details_missing_fields_are_none():
+    from vinted_tracker.parse import parse_item_details
+
+    page = FetchedPage(url=f"{BASE}/items/555-x", status=200, html=make_html(rsc_row("1", {"x": 1})), text="")
+    assert parse_item_details(page) == {"title": None, "brand": None, "size": None, "condition": None}

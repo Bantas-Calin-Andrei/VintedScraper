@@ -5,14 +5,14 @@ import json
 import logging
 import time
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
 import psycopg
 
-from . import db
+from . import db, manual, watch_settings
 from .browser import BlockedError, Fetcher, FetchError
 from .config import Config, Query
 from .discover import discover_query
@@ -57,9 +57,15 @@ class Runner:
         self._block_level = 0
         self._fetch_failures = 0
         self._parse_error_times: deque[datetime] = deque()
+        self.paused_until: datetime | None = None
+        self._settings_version: int | None = None
 
     def tick(self) -> float:
         """Do one unit of work. Returns how many seconds to wait before the next tick."""
+        self._refresh_settings()
+        if manual.process_next_request(self.conn, self.fetcher, self.cfg, self.clock, self.debug_dir) is not None:
+            self._mark_ok()
+            return 0.0
         now = self.clock()
         q = self._most_overdue_query(now)
         if q is not None:
@@ -121,10 +127,25 @@ class Runner:
             "this_run": asdict(self.counters),
             "parse_errors_last_hour": len(self._parse_error_times),
             "last_error": self.last_error,
+            "paused_until": self.paused_until.isoformat() if self.paused_until else None,
         }
         tmp = self.status_path.with_name(self.status_path.name + ".tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         tmp.replace(self.status_path)
+        try:
+            db.set_tracker_status(self.conn, data, self.clock())
+        except psycopg.Error as exc:
+            log.warning("could not save the heartbeat to the database: %s", exc)
+
+    def _refresh_settings(self) -> None:
+        """Pick up settings saved in the dashboard (the DB row wins over config.yaml once it exists)."""
+        loaded = watch_settings.load(self.conn)
+        if loaded is None or loaded[0] == self._settings_version:
+            return
+        version, settings = loaded
+        self.cfg = replace(self.cfg, queries=settings.queries(), allowed_conditions=settings.allowed_conditions())
+        self._settings_version = version
+        log.info("Using watch settings version %s (%s brand groups)", version, len(settings.groups))
 
     def _back_off(self, exc: BlockedError) -> None:
         steps = self.cfg.backoff_minutes
@@ -134,6 +155,7 @@ class Runner:
         self.health = "blocked"
         self.last_error = str(exc)
         log.warning("Blocked by Vinted (%s). Pausing %.0f minutes. Captchas are never solved.", exc, minutes)
+        self.paused_until = self.clock() + timedelta(minutes=minutes)
         self.write_status()
         self.sleep(minutes * 60)
 
@@ -148,6 +170,7 @@ class Runner:
             self._parse_error_times.popleft()
         self._block_level = 0
         self._fetch_failures = 0
+        self.paused_until = None
         if len(self._parse_error_times) >= PARSER_BROKEN_THRESHOLD:
             if self.health != "parser_broken":
                 log.error("Many parse errors in the last hour: Vinted probably changed its pages. See debug/.")

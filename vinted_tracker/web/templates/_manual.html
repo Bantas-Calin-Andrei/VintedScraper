@@ -1,0 +1,12 @@
+{% if message %}<p class="{{ 'error' if error else 'ok' }}">{{ message }}</p>{% endif %}
+{% if requests %}
+<ul class="requests">
+  {% for r in requests %}
+  <li>
+    <span class="pill req-{{ r.status }}">{{ {"pending": "Queued", "done": "Added", "failed": "Failed"}.get(r.status, r.status) }}</span>
+    <a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.item_id }}</a>
+    {% if r.message %}<span class="muted">{{ r.message }}</span>{% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}

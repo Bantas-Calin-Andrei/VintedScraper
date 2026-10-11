@@ -106,3 +106,47 @@ def test_hourly_quota_per_query_spreads_the_daily_cap(conn, tmp_path):
     assert result.tracked == 1
     assert item_url(BASE, 12) not in fetcher.calls
     assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "hourly_cap"
+
+
+def test_catalog_url_includes_condition_filter():
+    q = Query("x", (2050,), (53,), status_ids=(6, 1))
+    assert build_catalog_url(BASE, q) == (
+        "https://www.vinted.ro/catalog?catalog[]=2050&brand_ids[]=53&status_ids[]=6&status_ids[]=1&order=newest_first"
+    )
+
+
+def test_items_in_other_conditions_are_skipped_without_fetching(conn, tmp_path):
+    db.set_query_state(conn, "streetwear", 10, NOW - timedelta(minutes=5))
+    page = FetchedPage(
+        url=CAT1, status=200,
+        html=catalog_html(catalog_entry(12, condition="Foarte bună"), catalog_entry(11, condition="Nou cu etichetă"),
+                          catalog_entry(10)),
+        text="",
+    )
+    fetcher = FakeFetcher({CAT1: page, item_url(BASE, 11): item_page(11)})
+    cfg = make_config(allowed_conditions=("Nou cu etichetă", "Nou fără etichetă"))
+    result = run(conn, fetcher, cfg=cfg, tmp_path=tmp_path)
+    assert result.tracked == 1
+    assert item_url(BASE, 12) not in fetcher.calls
+    assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "condition"
+
+
+def test_catalog_url_includes_size_filter():
+    q = Query("x", (76,), (53,), status_ids=(6,), size_ids=(208, 1640))
+    assert build_catalog_url(BASE, q) == (
+        "https://www.vinted.ro/catalog?catalog[]=76&brand_ids[]=53&status_ids[]=6"
+        "&size_ids[]=208&size_ids[]=1640&order=newest_first"
+    )
+
+
+def test_catalog_url_without_sizes_has_no_size_filter():
+    assert "size_ids" not in build_catalog_url(BASE, Query("x", (76,), (53,), status_ids=(6,)))
+
+
+def test_stale_query_state_starts_with_a_baseline(conn, tmp_path):
+    db.set_query_state(conn, "streetwear", 100, NOW - timedelta(days=2))  # group re-added, or tracker was off
+    fetcher = FakeFetcher({CAT1: catalog_page(CAT1, [500, 499])})
+    result = run(conn, fetcher, tmp_path=tmp_path)
+    assert result.baseline is True
+    assert fetcher.calls == [CAT1]
+    assert db.get_query_state(conn, "streetwear") == (500, NOW)

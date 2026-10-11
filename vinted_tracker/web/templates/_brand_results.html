@@ -1,0 +1,10 @@
+{% if error %}
+<p class="error">{{ error }}</p>
+{% elif not results %}
+{% if q|length >= 2 %}<p class="muted">No brand called “{{ q }}”.</p>{% endif %}
+{% else %}
+{% for b in results %}
+<button type="button" class="result" data-group="{{ group }}" data-id="{{ b.id }}" data-title="{{ b.title }}"
+        onclick="addBrand(this)">{{ b.title }} <span class="muted">{{ "{:,}".format(b.item_count) }} items</span></button>
+{% endfor %}
+{% endif %}
