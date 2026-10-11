@@ -32,7 +32,7 @@ SELECT i.id, i.title, i.brand, i.catalog_id, i.size, i.condition,
        round((extract(epoch FROM i.sold_after_max) / 3600)::numeric, 1)::float8 AS sold_after_max_h,
        round((extract(epoch FROM (i.sold_after_min + i.sold_after_max) / 2) / 3600)::numeric, 1)::float8
            AS sold_after_h,
-       i.uncertain, i.query_name,
+       i.uncertain, i.query_name, i.source,
        %(base)s || i.url AS link
 FROM items i
 LEFT JOIN LATERAL (
@@ -50,7 +50,7 @@ WITH base AS (
            now() - i.uploaded_at AS age,
            (SELECT min(o.price_ron) FROM observations o WHERE o.item_id = i.id) AS lowest_price
     FROM items i
-    WHERE NOT i.out_of_scope
+    WHERE NOT i.out_of_scope AND i.source = 'auto'
 )
 SELECT grp AS "{label}",
        count(*) AS tracked,

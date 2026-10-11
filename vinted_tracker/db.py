@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS items (
     raw_first        jsonb NOT NULL
 );
 ALTER TABLE items ADD COLUMN IF NOT EXISTS out_of_scope boolean NOT NULL DEFAULT false;
+ALTER TABLE items ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'auto';  -- 'auto' | 'manual'
+ALTER TABLE items ADD COLUMN IF NOT EXISTS price_original numeric(12, 2);  -- in price_currency
+ALTER TABLE items ADD COLUMN IF NOT EXISTS price_currency text;
 CREATE INDEX IF NOT EXISTS items_due_idx ON items (next_check_at) WHERE final_status IS NULL;
 
 CREATE TABLE IF NOT EXISTS observations (
@@ -82,6 +85,15 @@ CREATE TABLE IF NOT EXISTS tracker_status (
     updated_at timestamptz NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS manual_requests (
+    item_id      bigint PRIMARY KEY,
+    url          text NOT NULL,
+    requested_at timestamptz NOT NULL,
+    status       text NOT NULL DEFAULT 'pending',  -- pending | done | failed
+    message      text,
+    finished_at  timestamptz
+);
+
 CREATE TABLE IF NOT EXISTS brand_cache (
     keyword    text PRIMARY KEY,
     results    jsonb NOT NULL,
@@ -116,6 +128,7 @@ def insert_item(
     uploaded_at: datetime,
     first_seen_at: datetime,
     next_check_at: datetime | None,
+    source: str = "auto",
 ) -> bool:
     """Start tracking an item and store its first observation. Returns False if it was already tracked."""
     price = snap.price if snap.currency == "RON" and snap.price is not None else item.price_ron
@@ -125,14 +138,15 @@ def insert_item(
             """
             INSERT INTO items (id, title, url, brand, catalog_id, size, condition, price_listed_ron,
                                seller_id, query_name, uploaded_at, first_seen_at, last_checked_at,
-                               next_check_at, raw_first)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               next_check_at, raw_first, source, price_original, price_currency)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO NOTHING
             """,
             (
                 item.id, item.title, item.url, item.brand, snap.catalog_id, item.size, item.condition,
                 price, item.seller_id, query_name, uploaded_at, first_seen_at, first_seen_at,
                 next_check_at, Jsonb({"catalog": item.raw, "item": snap.raw}),
+                source, snap.price, snap.currency or "RON",
             ),
         )
         if cur.rowcount == 0:
@@ -172,9 +186,9 @@ def set_query_state(conn: psycopg.Connection, name: str, high_water_id: int, pol
 
 def count_new_since(conn: psycopg.Connection, since: datetime, query_name: str | None = None) -> int:
     if query_name is None:
-        sql, params = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND NOT out_of_scope", (since,)
+        sql, params = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND NOT out_of_scope AND source = 'auto'", (since,)
     else:
-        sql = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND query_name = %s AND NOT out_of_scope"
+        sql = "SELECT count(*) AS n FROM items WHERE first_seen_at >= %s AND query_name = %s AND NOT out_of_scope AND source = 'auto'"
         params = (since, query_name)
     return conn.execute(sql, params).fetchone()["n"]
 
@@ -342,3 +356,41 @@ def put_brand_cache(conn: psycopg.Connection, keyword: str, results: list, now: 
         """,
         (keyword, Jsonb(results), now),
     )
+
+
+def add_manual_request(conn: psycopg.Connection, item_id: int, url: str, now: datetime) -> str:
+    """Queue a pasted listing. Returns 'queued', 'pending' (already queued) or 'exists' (already tracked)."""
+    if conn.execute("SELECT 1 FROM items WHERE id = %s", (item_id,)).fetchone():
+        return "exists"
+    row = conn.execute("SELECT status FROM manual_requests WHERE item_id = %s", (item_id,)).fetchone()
+    if row is not None and row["status"] == "pending":
+        return "pending"
+    conn.execute(
+        """
+        INSERT INTO manual_requests (item_id, url, requested_at) VALUES (%s, %s, %s)
+        ON CONFLICT (item_id) DO UPDATE
+            SET url = EXCLUDED.url, requested_at = EXCLUDED.requested_at, status = 'pending',
+                message = NULL, finished_at = NULL
+        """,
+        (item_id, url, now),
+    )
+    return "queued"
+
+
+def next_manual_request(conn: psycopg.Connection) -> dict | None:
+    return conn.execute(
+        "SELECT * FROM manual_requests WHERE status = 'pending' ORDER BY requested_at, item_id LIMIT 1"
+    ).fetchone()
+
+
+def finish_manual_request(conn: psycopg.Connection, item_id: int, status: str, message: str, now: datetime) -> None:
+    conn.execute(
+        "UPDATE manual_requests SET status = %s, message = %s, finished_at = %s WHERE item_id = %s",
+        (status, message, now, item_id),
+    )
+
+
+def recent_manual_requests(conn: psycopg.Connection, limit: int = 8) -> list[dict]:
+    return conn.execute(
+        "SELECT * FROM manual_requests ORDER BY requested_at DESC, item_id DESC LIMIT %s", (limit,)
+    ).fetchall()

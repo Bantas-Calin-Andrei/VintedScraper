@@ -92,3 +92,14 @@ def test_out_of_scope_items_are_left_out_of_the_report(conn):
     frames = build_report(conn, "https://www.vinted.ro")
     assert 4 not in set(frames["Items"]["id"])
     assert "adidas" not in set(frames["By brand"]["brand"])
+
+
+def test_manual_listings_are_in_items_but_not_in_summaries(conn):
+    seed(conn)
+    db.insert_item(conn, item=make_catalog_item(50, brand="Gucci", price_ron=Decimal("900")),
+                   snap=make_snapshot(50, price=Decimal("900")), query_name="manual", uploaded_at=UPLOADED,
+                   first_seen_at=UPLOADED, next_check_at=None, source="manual")
+    frames = build_report(conn, "https://www.vinted.ro")
+    items = frames["Items"].set_index("id")
+    assert items.loc[50, "source"] == "manual" and items.loc[1, "source"] == "auto"
+    assert "Gucci" not in set(frames["By brand"]["brand"])

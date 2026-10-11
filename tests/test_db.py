@@ -134,3 +134,23 @@ def test_tracker_status_and_brand_cache(conn):
     db.put_brand_cache(conn, "nike", [{"id": 53, "title": "Nike"}], T0)
     db.put_brand_cache(conn, "nike", [{"id": 53, "title": "Nike", "item_count": 5}], T0)
     assert db.get_brand_cache(conn, "nike") == ([{"id": 53, "title": "Nike", "item_count": 5}], T0)
+
+
+def test_manual_request_queue(conn):
+    url = "https://www.vinted.ro/items/9"
+    assert db.add_manual_request(conn, 9, url, T0) == "queued"
+    assert db.add_manual_request(conn, 9, url, T0) == "pending"
+    assert db.next_manual_request(conn)["item_id"] == 9
+    db.finish_manual_request(conn, 9, "failed", "Too old", T0)
+    assert db.next_manual_request(conn) is None
+    assert db.add_manual_request(conn, 9, url, T0 + timedelta(minutes=1)) == "queued"  # a failed link can be retried
+    track(conn, 1001)
+    assert db.add_manual_request(conn, 1001, url, T0) == "exists"
+    assert [r["item_id"] for r in db.recent_manual_requests(conn)] == [9]
+
+
+def test_manual_items_do_not_use_up_the_daily_quota(conn):
+    track(conn, 1)
+    db.insert_item(conn, item=make_catalog_item(2), snap=make_snapshot(2), query_name="manual", uploaded_at=T0,
+                   first_seen_at=T0 + timedelta(minutes=5), next_check_at=T0, source="manual")
+    assert db.count_new_since(conn, T0) == 1

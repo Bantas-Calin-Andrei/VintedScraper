@@ -114,3 +114,20 @@ def test_session_refresh_redirect_is_not_mistaken_for_deleted():
     )
     with pytest.raises(ParseError):
         parse_item(page, 555)
+
+
+def test_parse_item_details_reads_title_brand_size_condition():
+    from helpers import item_page
+
+    from vinted_tracker.parse import parse_item_details
+
+    details = parse_item_details(item_page(555, title="Geacă TNF", brand="The North Face", size="L",
+                                           condition="Nou cu etichetă"))
+    assert details == {"title": "Geacă TNF", "brand": "The North Face", "size": "L", "condition": "Nou cu etichetă"}
+
+
+def test_parse_item_details_missing_fields_are_none():
+    from vinted_tracker.parse import parse_item_details
+
+    page = FetchedPage(url=f"{BASE}/items/555-x", status=200, html=make_html(rsc_row("1", {"x": 1})), text="")
+    assert parse_item_details(page) == {"title": None, "brand": None, "size": None, "condition": None}

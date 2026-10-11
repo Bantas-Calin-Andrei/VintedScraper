@@ -263,3 +263,26 @@ def parse_upload_age(text: str) -> timedelta | None:
         if pattern.match(rest):
             return unit * count
     return None
+
+
+_DETAIL_CODES = {"brand": "brand", "size": "size", "status": "condition"}
+
+
+def parse_item_details(page: FetchedPage) -> dict:
+    """Title, brand, size and condition from an item page (used for listings added by hand)."""
+    dicts = all_dicts(page.html)
+    details: dict = {"title": None, "brand": None, "size": None, "condition": None}
+    offer = _first(
+        dicts, lambda d: isinstance(d.get("price"), dict) and "currency_code" in d["price"] and "seller_id" in d
+    )
+    if offer and isinstance(offer.get("title"), str):
+        details["title"] = offer["title"]
+    holder = _first(dicts, lambda d: isinstance(d.get("attributes"), list))
+    for attribute in (holder or {}).get("attributes", []):
+        if not isinstance(attribute, dict):
+            continue
+        key = _DETAIL_CODES.get(attribute.get("code"))
+        value = (attribute.get("data") or {}).get("value")
+        if key and isinstance(value, str) and details[key] is None:
+            details[key] = value
+    return details

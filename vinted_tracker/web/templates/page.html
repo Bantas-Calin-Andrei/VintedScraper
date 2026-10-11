@@ -34,6 +34,15 @@
       {% endfor %}
     </section>
 
+    <section class="add-product">
+      <form class="add-form" hx-post="/manual" hx-target="#manual" hx-on::after-request="if (event.detail.successful) this.reset()">
+        <h2>Add a product</h2>
+        <input name="link" type="text" placeholder="Paste a vinted.ro listing link" autocomplete="off" aria-label="Listing link">
+        <button type="submit" class="primary">Add</button>
+      </form>
+      <div id="manual" hx-get="/fragments/manual" hx-trigger="load, every 30s"></div>
+    </section>
+
     <section class="products">
       <form id="filters" class="filters" hx-get="/fragments/products" hx-target="#products"
             hx-trigger="change, keyup changed delay:400ms from:#q" onsubmit="return false">
@@ -50,6 +59,11 @@
         <select name="type">
           <option value="">All types</option>
           {% for id, name in types %}<option value="{{ id }}">{{ name }}</option>{% endfor %}
+        </select>
+        <select name="sort" aria-label="Sort">
+          <option value="newest">Newest first</option>
+          <option value="price_asc">Price: low → high</option>
+          <option value="price_desc">Price: high → low</option>
         </select>
         <input type="hidden" id="page" name="page" value="1">
       </form>

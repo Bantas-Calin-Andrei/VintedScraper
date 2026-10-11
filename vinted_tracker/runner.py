@@ -12,7 +12,7 @@ from typing import Callable
 
 import psycopg
 
-from . import db, watch_settings
+from . import db, manual, watch_settings
 from .browser import BlockedError, Fetcher, FetchError
 from .config import Config, Query
 from .discover import discover_query
@@ -63,6 +63,9 @@ class Runner:
     def tick(self) -> float:
         """Do one unit of work. Returns how many seconds to wait before the next tick."""
         self._refresh_settings()
+        if manual.process_next_request(self.conn, self.fetcher, self.cfg, self.clock, self.debug_dir) is not None:
+            self._mark_ok()
+            return 0.0
         now = self.clock()
         q = self._most_overdue_query(now)
         if q is not None:

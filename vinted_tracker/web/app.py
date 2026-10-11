@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import db, stats, watch_settings
+from ..manual import parse_item_link
 from ..brand_lookup import BrandLookup, LookupFailed
 from ..export import build_report, write_report
 from ..models import utcnow
@@ -75,12 +76,13 @@ def create_app(
             return JSONResponse({}, status_code=503)
 
     @app.get("/fragments/products", response_class=HTMLResponse)
-    def products_fragment(request: Request, status: str = "", brand: str = "", type: str = "", q: str = "", page: int = 1):
+    def products_fragment(request: Request, status: str = "", brand: str = "", type: str = "", q: str = "", page: int = 1,
+                           sort: str = "newest"):
         type_id = int(type) if type.isdigit() else None
         try:
             with conn_factory() as conn:
                 rows, total = stats.products(conn, clock(), status=status, brand=brand, type_id=type_id, q=q,
-                                             page=page, base_url=base_url)
+                                             page=page, sort=sort, base_url=base_url)
         except psycopg.OperationalError:
             return render(request, "_db_error.html")
         pages = max(1, -(-total // stats.PAGE_SIZE))
@@ -97,6 +99,38 @@ def create_app(
         write_report(frames, buffer)
         name = f"vinted_report_{clock().date().isoformat()}.xlsx"
         return Response(buffer.getvalue(), media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    MANUAL_MESSAGES = {
+        "queued": "Added to the queue. The tracker picks it up within about a minute.",
+        "pending": "Already in the queue.",
+        "exists": "This listing is already being tracked.",
+    }
+
+    def manual_list(request: Request, message: str | None = None, error: bool = False) -> HTMLResponse:
+        try:
+            with conn_factory() as conn:
+                requests = db.recent_manual_requests(conn)
+        except psycopg.OperationalError:
+            return render(request, "_db_error.html")
+        return render(request, "_manual.html", requests=requests, message=message, error=error)
+
+    @app.get("/fragments/manual", response_class=HTMLResponse)
+    def manual_fragment(request: Request):
+        return manual_list(request)
+
+    @app.post("/manual", response_class=HTMLResponse)
+    async def add_manual(request: Request):
+        link = str((await request.form()).get("link", ""))
+        item_id = parse_item_link(link)
+        if item_id is None:
+            return manual_list(request, "That isn't a vinted.ro listing link. It should look like "
+                                        "https://www.vinted.ro/items/1234567890-…", error=True)
+        try:
+            with conn_factory() as conn:
+                outcome = db.add_manual_request(conn, item_id, link.strip(), clock())
+        except psycopg.OperationalError:
+            return render(request, "_db_error.html")
+        return manual_list(request, MANUAL_MESSAGES[outcome], error=outcome == "exists")
 
     def settings_context(settings, *, saved: bool = False, errors: list[str] | None = None) -> dict:
         return {

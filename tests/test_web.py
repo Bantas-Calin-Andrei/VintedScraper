@@ -168,3 +168,32 @@ def test_enter_in_brand_search_does_not_submit_the_form(conn, client):
     watch_settings.save(conn, make_settings(), NOW)
     text = client.get("/fragments/settings").text
     assert "if (event.key === 'Enter') event.preventDefault()" in text
+
+
+def test_add_manual_link(conn, client):
+    text = client.post("/manual", data={"link": "https://www.vinted.ro/items/7001-geaca?referrer=x"}).text
+    assert "Added to the queue" in text
+    assert db.next_manual_request(conn)["item_id"] == 7001
+    assert "7001" in client.get("/fragments/manual").text
+
+
+def test_add_manual_link_rejects_other_links(conn, client):
+    text = client.post("/manual", data={"link": "https://www.vinted.fr/items/7001"}).text
+    assert "vinted.ro listing link" in text
+    assert db.next_manual_request(conn) is None
+
+
+def test_add_manual_link_already_tracked(conn, client):
+    add_item(conn, 7001)
+    assert "already being tracked" in client.post("/manual", data={"link": "https://www.vinted.ro/items/7001"}).text
+
+
+def test_products_show_manual_tag_and_sort(conn, client):
+    add_item(conn, 1, title="Auto hoodie")
+    uploaded = NOW - timedelta(days=1)
+    db.insert_item(conn, item=make_catalog_item(2, title="Gucci belt", price_ron=Decimal("900")),
+                   snap=make_snapshot(2, price=Decimal("900")), query_name="manual", uploaded_at=uploaded,
+                   first_seen_at=uploaded, next_check_at=NOW, source="manual")
+    text = client.get("/fragments/products", params={"sort": "price_desc"}).text
+    assert 'class="tag manual"' in text
+    assert text.index("Gucci belt") < text.index("Auto hoodie")

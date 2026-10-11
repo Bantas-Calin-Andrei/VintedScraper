@@ -10,7 +10,7 @@
     <tr>
       <td><span class="pill {{ r.status }}">{{ r.status_label }}</span></td>
       <td>{{ r.brand }}</td>
-      <td><a href="{{ r.link }}" target="_blank" rel="noopener">{{ r.title }}</a></td>
+      <td>{% if r.manual %}<span class="tag manual">MANUAL</span> {% endif %}<a href="{{ r.link }}" target="_blank" rel="noopener">{{ r.title }}</a></td>
       <td>{{ r.type }}</td>
       <td>{{ r.size }}</td>
       <td class="num">{{ r.price_text }}</td>

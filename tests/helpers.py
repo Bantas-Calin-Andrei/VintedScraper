@@ -71,9 +71,18 @@ def item_page(
     text: str = "Încărcat acum 3 minute",
     status: int = 200,
     url: str | None = None,
+    title: str = "Geacă",
+    brand: str = "Nike",
+    size: str = "XL",
+    condition: str = "Nou fără etichetă",
 ) -> FetchedPage:
+    attributes = [
+        {"code": "brand", "data": {"id": "53", "title": "Brand", "value": brand}, "type": "favouritable"},
+        {"code": "size", "data": {"id": 515, "title": "Mărime", "value": size}, "type": "faq"},
+        {"code": "status", "data": {"id": 50, "title": "Stare", "value": condition}, "type": "faq"},
+    ]
     plugins = [
-        {"name": "make_offer", "data": {"price": {"amount": amount, "currency_code": currency}, "seller_id": "7", "title": "Geacă"}},
+        {"name": "make_offer", "data": {"price": {"amount": amount, "currency_code": currency}, "seller_id": "7", "title": title}},
         {
             "name": "ask_seller",
             "data": {
@@ -86,7 +95,7 @@ def item_page(
                 "seller_id": "7",
             },
         },
-        {"name": "attributes", "data": {"catalog_id": "1803", "favourite_count": 4}},
+        {"name": "attributes", "data": {"catalog_id": "1803", "favourite_count": 4, "attributes": attributes}},
     ]
     html = make_html(rsc_row("a", ["$", "div", None, {"plugins": plugins}]))
     return FetchedPage(url=url or f"{BASE}/items/{item_id}-geaca", status=status, html=html, text=text)

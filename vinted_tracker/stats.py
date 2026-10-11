@@ -14,6 +14,11 @@ from .vinted_ref import PRODUCT_TYPES, catalog_ids_of_type, product_type_of
 MIN_SOLD_PER_BAR = 3
 PAGE_SIZE = 50
 LOCAL_TZ = ZoneInfo("Europe/Bucharest")
+SORT_ORDERS = {
+    "newest": "i.uploaded_at DESC, i.id DESC",
+    "price_asc": "coalesce(lp.lowest_price, i.price_listed_ron, i.price_original) ASC NULLS LAST, i.id DESC",
+    "price_desc": "coalesce(lp.lowest_price, i.price_listed_ron, i.price_original) DESC NULLS LAST, i.id DESC",
+}
 STATUS_LABELS = {"tracking": "Tracking", "sold": "Sold", "deleted": "Deleted", "unsold_30d": "Unsold 30 d", "hidden": "Hidden"}
 
 _HOURS = "(extract(epoch FROM (sold_after_min + sold_after_max) / 2) / 3600)::float8"
@@ -30,7 +35,7 @@ def tiles(conn: psycopg.Connection, now: datetime) -> dict:
                count(*) FILTER (WHERE final_status = 'sold' AND sold_after_max <= interval '7 days'
                                 AND %(now)s - uploaded_at >= interval '7 days') AS sold_7d,
                count(*) FILTER (WHERE %(now)s - uploaded_at >= interval '7 days') AS old_7d
-        FROM items WHERE NOT out_of_scope
+        FROM items WHERE NOT out_of_scope AND source = 'auto'
         """,
         {"now": now},
     ).fetchone()
@@ -56,7 +61,7 @@ def chart_series(conn: psycopg.Connection) -> dict[str, list[dict]]:
     rows = conn.execute(
         f"""
         SELECT brand, catalog_id, size, price_listed_ron, {_HOURS} AS hours FROM items
-        WHERE NOT out_of_scope AND final_status = 'sold' AND NOT uncertain
+        WHERE NOT out_of_scope AND source = 'auto' AND final_status = 'sold' AND NOT uncertain
         """
     ).fetchall()
     keys = {
@@ -97,6 +102,7 @@ def products(
     type_id: int | None = None,
     q: str = "",
     page: int = 1,
+    sort: str = "newest",
     base_url: str = "https://www.vinted.ro",
 ) -> tuple[list[dict], int]:
     where = ["NOT i.out_of_scope"]
@@ -119,7 +125,7 @@ def products(
         f"""
         SELECT i.id, i.title, i.url, i.brand, i.catalog_id, i.size, i.condition, i.price_listed_ron,
                i.uploaded_at, i.final_status, i.sold_after_min, i.sold_after_max, i.uncertain,
-               i.last_checked_at, i.next_check_at, lp.lowest_price, lp.favourites, count(*) OVER () AS total
+               i.last_checked_at, i.next_check_at, i.source, i.price_original, i.price_currency, lp.lowest_price, lp.favourites, count(*) OVER () AS total
         FROM items i
         LEFT JOIN LATERAL (
             SELECT min(o.price_ron) AS lowest_price,
@@ -128,7 +134,7 @@ def products(
             FROM observations o WHERE o.item_id = i.id
         ) lp ON true
         WHERE {' AND '.join(where)}
-        ORDER BY i.uploaded_at DESC, i.id DESC
+        ORDER BY {SORT_ORDERS.get(sort, SORT_ORDERS['newest'])}
         LIMIT %(limit)s OFFSET %(offset)s
         """,
         params,
@@ -149,7 +155,9 @@ def _format(r: dict, now: datetime, base_url: str) -> dict:
         "condition": r["condition"] or "",
         "status": status,
         "status_label": STATUS_LABELS.get(status, status),
-        "price_text": _price_text(r["price_listed_ron"], r["lowest_price"]),
+        "price_text": _price_text(r["price_listed_ron"], r["lowest_price"])
+        or (f"{_money(r['price_original'])} {r['price_currency']}" if r["price_original"] is not None else ""),
+        "manual": r["source"] == "manual",
         "listed_ago": _ago(now - r["uploaded_at"]),
         "sold_after_text": _sold_after(r) if status == "sold" else "",
         "favourites": r["favourites"],

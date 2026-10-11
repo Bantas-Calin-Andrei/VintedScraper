@@ -119,3 +119,41 @@ def test_tracker_state_blocked_pause_is_not_stopped():
 def test_tracker_state_parser_broken():
     state = stats.tracker_state(({"health": "parser_broken"}, NOW), NOW)
     assert state["level"] == "warn" and "debug" in state["text"]
+
+
+def add_manual(conn, item_id, *, price="300", currency="RON", sold=None):
+    uploaded = NOW - timedelta(days=10)
+    db.insert_item(conn, item=make_catalog_item(item_id, brand="Gucci", price_ron=Decimal(price) if currency == "RON" else None),
+                   snap=make_snapshot(item_id, price=Decimal(price), currency=currency), query_name="manual",
+                   uploaded_at=uploaded, first_seen_at=NOW - timedelta(hours=1), next_check_at=NOW, source="manual")
+    if sold:
+        db.update_item_after_check(conn, item_id, checked_at=NOW, next_check_at=None, final_status="sold",
+                                   sold_after_min=timedelta(hours=sold[0]), sold_after_max=timedelta(hours=sold[1]),
+                                   uncertain=False)
+
+
+def test_manual_listings_stay_out_of_tiles_and_charts(conn):
+    for i, (lo, hi) in enumerate([(1, 3), (3, 5), (5, 7)], start=1):
+        add(conn, i, sold=(lo, hi))
+    for i in (11, 12, 13):
+        add_manual(conn, i, sold=(100, 120))
+    t = stats.tiles(conn, NOW)
+    assert (t["sold"], t["median_hours"]) == (3, 4.0)
+    assert [b["label"] for b in stats.chart_series(conn)["brand"]] == ["Nike"]
+
+
+def test_manual_listings_show_in_the_table_with_their_currency(conn):
+    add_manual(conn, 11, price="150", currency="PLN")
+    (row,), _ = stats.products(conn, NOW, base_url=BASE)
+    assert row["manual"] is True and row["price_text"] == "150 PLN"
+
+
+def test_products_sort_by_price(conn):
+    add(conn, 1, price="80", age=timedelta(days=3))
+    add(conn, 2, price="300", age=timedelta(days=2), low_price="40")  # dropped to 40
+    add(conn, 3, price="150", age=timedelta(days=1))
+    ids = lambda sort: [r["id"] for r in stats.products(conn, NOW, sort=sort, base_url=BASE)[0]]  # noqa: E731
+    assert ids("newest") == [3, 2, 1]
+    assert ids("price_asc") == [2, 1, 3]
+    assert ids("price_desc") == [3, 1, 2]
+    assert ids("nonsense") == [3, 2, 1]

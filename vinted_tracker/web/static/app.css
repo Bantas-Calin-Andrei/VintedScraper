@@ -61,3 +61,12 @@ button.x:hover { color: var(--bad); }
 .checks.inline { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
 .save-row { position: sticky; bottom: -40px; background: var(--card); padding: 12px 0; margin-top: 12px; }
 .htmx-indicator { display: none; } .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
+.add-product { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.add-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.add-form h2 { font-size: 16px; margin: 0 8px 0 0; }
+.add-form input { flex: 1; min-width: 240px; }
+.requests { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; font-size: 13px; }
+.req-pending { background: #fef3c7; color: #92400e; } .req-done { background: #dcfce7; color: #166534; }
+.req-failed { background: #fee2e2; color: #991b1b; }
+.tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; vertical-align: middle; }
+.tag.manual { background: var(--bad); color: #fff; }

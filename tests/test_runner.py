@@ -153,3 +153,17 @@ def test_back_off_still_pauses_when_the_heartbeat_cannot_be_saved(conn, tmp_path
     runner = make_runner(conn, BlockingFetcher(), tmp_path, sleeps=sleeps)
     runner.run_forever(max_ticks=1)
     assert sleeps == [1800.0]
+
+
+def test_tick_handles_a_queued_manual_link_first(conn, tmp_path):
+    from helpers import item_page
+
+    from vinted_tracker.discover import item_url
+
+    url = item_url(BASE, 7001)
+    db.add_manual_request(conn, 7001, url, NOW)
+    fetcher = FakeFetcher({url: item_page(7001)})
+    runner = make_runner(conn, fetcher, tmp_path)
+    assert runner.tick() == 0.0
+    assert fetcher.calls == [url]
+    assert conn.execute("SELECT source FROM items WHERE id = 7001").fetchone()["source"] == "manual"

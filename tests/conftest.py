@@ -21,7 +21,8 @@ def conn():
     connection = db.connect(url)
     db.init_schema(connection)
     connection.execute(
-        "TRUNCATE items, observations, skipped_items, query_state, runs, watch_settings, tracker_status, brand_cache"
+        "TRUNCATE items, observations, skipped_items, query_state, runs, watch_settings, tracker_status, brand_cache,"
+        " manual_requests"
         " RESTART IDENTITY CASCADE"
     )
     yield connection
