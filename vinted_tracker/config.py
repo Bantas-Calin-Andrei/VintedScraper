@@ -21,6 +21,7 @@ class Query:
     price_from: float | None = None
     price_to: float | None = None
     status_ids: tuple[int, ...] = ()  # Vinted condition filter, e.g. 6 = new with tags, 1 = new without tags
+    size_ids: tuple[int, ...] = ()  # Vinted size filter; empty = all sizes
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ def _query(raw: dict[str, Any]) -> Query:
         price_from=_optional_float(raw.get("price_from")),
         price_to=_optional_float(raw.get("price_to")),
         status_ids=tuple(int(x) for x in raw.get("status_ids") or ()),
+        size_ids=tuple(int(x) for x in raw.get("size_ids") or ()),
     )
 
 

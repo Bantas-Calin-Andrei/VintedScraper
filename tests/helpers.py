@@ -179,3 +179,16 @@ class BlockingFetcher:
         from vinted_tracker.browser import BlockedError
 
         raise BlockedError(f"challenge at {url}")
+
+
+def make_settings(**overrides):
+    from vinted_tracker.watch_settings import Brand, Group, WatchSettings
+
+    values = dict(
+        groups=(Group("streetwear", (Brand(53, "Nike"),)),),
+        catalog_ids=(76, 79),
+        size_ids=(),
+        status_ids=(6, 1),
+    )
+    values.update(overrides)
+    return WatchSettings(**values)

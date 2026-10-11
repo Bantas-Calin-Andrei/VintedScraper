@@ -68,6 +68,25 @@ CREATE TABLE IF NOT EXISTS runs (
     blocks           integer NOT NULL DEFAULT 0,
     parse_errors     integer NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS watch_settings (
+    id         smallint PRIMARY KEY CHECK (id = 1),
+    data       jsonb NOT NULL,
+    version    integer NOT NULL,
+    updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tracker_status (
+    id         smallint PRIMARY KEY CHECK (id = 1),
+    data       jsonb NOT NULL,
+    updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS brand_cache (
+    keyword    text PRIMARY KEY,
+    results    jsonb NOT NULL,
+    fetched_at timestamptz NOT NULL
+);
 """
 
 
@@ -275,4 +294,51 @@ def finish_run(
         WHERE id = %s
         """,
         (ended_at, pages_loaded, items_discovered, items_rechecked, blocks, parse_errors, run_id),
+    )
+
+
+def get_watch_settings(conn: psycopg.Connection) -> tuple[int, dict] | None:
+    row = conn.execute("SELECT version, data FROM watch_settings WHERE id = 1").fetchone()
+    return None if row is None else (row["version"], row["data"])
+
+
+def save_watch_settings(conn: psycopg.Connection, data: dict, now: datetime) -> int:
+    return conn.execute(
+        """
+        INSERT INTO watch_settings (id, data, version, updated_at) VALUES (1, %s, 1, %s)
+        ON CONFLICT (id) DO UPDATE
+            SET data = EXCLUDED.data, version = watch_settings.version + 1, updated_at = EXCLUDED.updated_at
+        RETURNING version
+        """,
+        (Jsonb(data), now),
+    ).fetchone()["version"]
+
+
+def set_tracker_status(conn: psycopg.Connection, data: dict, now: datetime) -> None:
+    conn.execute(
+        """
+        INSERT INTO tracker_status (id, data, updated_at) VALUES (1, %s, %s)
+        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = EXCLUDED.updated_at
+        """,
+        (Jsonb(data), now),
+    )
+
+
+def get_tracker_status(conn: psycopg.Connection) -> tuple[dict, datetime] | None:
+    row = conn.execute("SELECT data, updated_at FROM tracker_status WHERE id = 1").fetchone()
+    return None if row is None else (row["data"], row["updated_at"])
+
+
+def get_brand_cache(conn: psycopg.Connection, keyword: str) -> tuple[list, datetime] | None:
+    row = conn.execute("SELECT results, fetched_at FROM brand_cache WHERE keyword = %s", (keyword,)).fetchone()
+    return None if row is None else (row["results"], row["fetched_at"])
+
+
+def put_brand_cache(conn: psycopg.Connection, keyword: str, results: list, now: datetime) -> None:
+    conn.execute(
+        """
+        INSERT INTO brand_cache (keyword, results, fetched_at) VALUES (%s, %s, %s)
+        ON CONFLICT (keyword) DO UPDATE SET results = EXCLUDED.results, fetched_at = EXCLUDED.fetched_at
+        """,
+        (keyword, Jsonb(results), now),
     )

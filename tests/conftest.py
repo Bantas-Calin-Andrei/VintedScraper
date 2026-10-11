@@ -20,6 +20,9 @@ def conn():
         pytest.skip("TEST_DATABASE_URL not set (see .env.example)")
     connection = db.connect(url)
     db.init_schema(connection)
-    connection.execute("TRUNCATE items, observations, skipped_items, query_state, runs RESTART IDENTITY CASCADE")
+    connection.execute(
+        "TRUNCATE items, observations, skipped_items, query_state, runs, watch_settings, tracker_status, brand_cache"
+        " RESTART IDENTITY CASCADE"
+    )
     yield connection
     connection.close()

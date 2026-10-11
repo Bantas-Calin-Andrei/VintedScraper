@@ -116,3 +116,21 @@ def test_out_of_scope_items_do_not_use_up_the_daily_quota(conn):
     db.mark_out_of_scope(conn, [2])
     assert db.count_new_since(conn, T0) == 1
     assert db.count_new_since(conn, T0, "streetwear") == 1
+
+
+def test_watch_settings_row_versions(conn):
+    assert db.get_watch_settings(conn) is None
+    assert db.save_watch_settings(conn, {"a": 1}, T0) == 1
+    assert db.save_watch_settings(conn, {"a": 2}, T0) == 2
+    assert db.get_watch_settings(conn) == (2, {"a": 2})
+
+
+def test_tracker_status_and_brand_cache(conn):
+    assert db.get_tracker_status(conn) is None
+    db.set_tracker_status(conn, {"health": "ok"}, T0)
+    db.set_tracker_status(conn, {"health": "blocked"}, T0 + timedelta(minutes=1))
+    assert db.get_tracker_status(conn) == ({"health": "blocked"}, T0 + timedelta(minutes=1))
+    assert db.get_brand_cache(conn, "nike") is None
+    db.put_brand_cache(conn, "nike", [{"id": 53, "title": "Nike"}], T0)
+    db.put_brand_cache(conn, "nike", [{"id": 53, "title": "Nike", "item_count": 5}], T0)
+    assert db.get_brand_cache(conn, "nike") == ([{"id": 53, "title": "Nike", "item_count": 5}], T0)

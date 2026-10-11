@@ -111,3 +111,11 @@ def test_project_config_tracks_new_mens_clothing_only():
     assert all(q.catalog_ids == (2050,) for q in cfg.queries)
     assert all(set(q.status_ids) == {6, 1} for q in cfg.queries)
     assert set(cfg.allowed_conditions) == {"Nou cu etichetă", "Nou fără etichetă"}
+
+
+def test_query_size_ids(tmp_path):
+    text = VALID.replace("    brand_ids: [53, 14]", "    brand_ids: [53, 14]\n    size_ids: [208, 209]")
+    assert "size_ids" in text
+    cfg = load_config(write(tmp_path, text), ENV)
+    assert cfg.queries[0].size_ids == (208, 209)
+    assert cfg.queries[1].size_ids == ()
