@@ -34,6 +34,7 @@ def build_catalog_url(base_url: str, q: Query, page: int = 1) -> str:
     params: list[tuple[str, object]] = [("catalog[]", c) for c in q.catalog_ids]
     params += [("brand_ids[]", b) for b in q.brand_ids]
     params += [("status_ids[]", s) for s in q.status_ids]
+    params += [("size_ids[]", s) for s in q.size_ids]
     if q.price_from is not None:
         params.append(("price_from", _number(q.price_from)))
     if q.price_to is not None:

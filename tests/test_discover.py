@@ -129,3 +129,15 @@ def test_items_in_other_conditions_are_skipped_without_fetching(conn, tmp_path):
     assert result.tracked == 1
     assert item_url(BASE, 12) not in fetcher.calls
     assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "condition"
+
+
+def test_catalog_url_includes_size_filter():
+    q = Query("x", (76,), (53,), status_ids=(6,), size_ids=(208, 1640))
+    assert build_catalog_url(BASE, q) == (
+        "https://www.vinted.ro/catalog?catalog[]=76&brand_ids[]=53&status_ids[]=6"
+        "&size_ids[]=208&size_ids[]=1640&order=newest_first"
+    )
+
+
+def test_catalog_url_without_sizes_has_no_size_filter():
+    assert "size_ids" not in build_catalog_url(BASE, Query("x", (76,), (53,), status_ids=(6,)))

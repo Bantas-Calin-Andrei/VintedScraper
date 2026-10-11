@@ -100,3 +100,43 @@ def test_most_overdue_query_is_polled_first(conn, tmp_path):
                     status_path=tmp_path / "status.json", debug_dir=tmp_path / "debug")
     runner.tick()
     assert fetcher.calls == [url_b]
+
+
+from helpers import make_settings  # noqa: E402
+
+from vinted_tracker import watch_settings  # noqa: E402
+from vinted_tracker.watch_settings import Brand, Group  # noqa: E402
+
+
+def test_tick_uses_settings_from_the_database(conn, tmp_path):
+    settings = make_settings(groups=(Group("g1", (Brand(53, "Nike"),)),), catalog_ids=(76,), size_ids=(208,), status_ids=(6,))
+    watch_settings.save(conn, settings, NOW)
+    url = build_catalog_url(BASE, Query("g1", (76,), (53,), status_ids=(6,), size_ids=(208,)))
+    fetcher = FakeFetcher({url: catalog_page(url, [300])})
+    runner = make_runner(conn, fetcher, tmp_path)
+    runner.tick()
+    assert fetcher.calls == [url]
+    assert runner.cfg.allowed_conditions == ("Nou cu etichetă",)
+
+
+def test_renamed_group_starts_with_a_baseline(conn, tmp_path):
+    watch_settings.save(conn, make_settings(groups=(Group("a", (Brand(53, "Nike"),)),)), NOW)
+    db.set_query_state(conn, "a", 100, NOW - timedelta(minutes=1))
+    runner = make_runner(conn, FakeFetcher(), tmp_path)
+    runner.tick()  # "a" polled 1 min ago: nothing to do
+    watch_settings.save(conn, make_settings(groups=(Group("b", (Brand(53, "Nike"),)),)), NOW)
+    url_b = build_catalog_url(BASE, Query("b", (76, 79), (53,), status_ids=(6, 1)))
+    runner.fetcher = FakeFetcher({url_b: catalog_page(url_b, [500, 499])})
+    runner.tick()
+    assert runner.fetcher.calls == [url_b]  # only the catalog: a baseline, no item pages
+    assert db.get_query_state(conn, "b") == (500, NOW)
+
+
+def test_heartbeat_goes_to_the_database_with_pause_end(conn, tmp_path):
+    sleeps = []
+    runner = make_runner(conn, BlockingFetcher(), tmp_path, sleeps=sleeps)
+    runner.run_forever(max_ticks=1)
+    data, updated = db.get_tracker_status(conn)
+    assert data["health"] == "blocked"
+    assert data["paused_until"] == (NOW + timedelta(minutes=30)).isoformat()
+    assert updated == NOW

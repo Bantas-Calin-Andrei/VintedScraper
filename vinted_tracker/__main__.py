@@ -14,12 +14,12 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
-from . import db
+from . import db, watch_settings
 from .browser import BlockedError, BrowserSession, RateLimiter
 from .config import Config, ConfigError, load_config
 from .export import build_report, write_report
 from .lock import AlreadyRunning, single_instance
-from .models import FetchedPage
+from .models import FetchedPage, utcnow
 from .parse import ParseError, parse_catalog, parse_item
 from .runner import Runner
 
@@ -88,6 +88,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
                 try:
                     conn = db.connect(cfg.database_url)
                     db.init_schema(conn)
+                    watch_settings.ensure_seeded(conn, cfg, utcnow())
                     Runner(conn, browser, cfg, status_path=STATUS_PATH).run_forever(max_ticks=args.max_ticks)
                     return 0
                 except psycopg.OperationalError as exc:
@@ -105,11 +106,15 @@ def cmd_init_db(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def cmd_status(cfg: Config, args: argparse.Namespace) -> int:
-    if STATUS_PATH.exists():
-        print(STATUS_PATH.read_text(encoding="utf-8"))
+    conn = db.connect(cfg.database_url)
+    row = db.get_tracker_status(conn)
+    if row is None:
+        print("The tracker has not reported yet.")
     else:
-        print("No status.json yet: the tracker has not run.")
-    print("Items by status:", db.status_counts(db.connect(cfg.database_url)))
+        data, updated = row
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        print("Last heartbeat:", updated.isoformat())
+    print("Items by status:", db.status_counts(conn))
     return 0
 
 
