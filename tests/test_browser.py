@@ -85,3 +85,10 @@ def test_debug_pages_are_capped(tmp_path):
     assert len(names) == 3
     assert names[-1].endswith("item-1.html")
     assert len(list(tmp_path.glob("*.txt"))) == 3
+
+
+def test_debug_page_label_with_path_characters_is_safe(tmp_path):
+    page = FetchedPage(url="https://www.vinted.ro/catalog", status=200, html="<html>x</html>", text="x")
+    path = save_debug_page(page, 'catalog-Nike/adidas: "RL"?-p1', tmp_path)
+    assert path.parent == tmp_path and path.exists()
+    assert "/" not in path.name and ":" not in path.name and "?" not in path.name

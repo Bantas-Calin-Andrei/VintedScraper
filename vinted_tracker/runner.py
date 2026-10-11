@@ -129,7 +129,10 @@ class Runner:
         tmp = self.status_path.with_name(self.status_path.name + ".tmp")
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         tmp.replace(self.status_path)
-        db.set_tracker_status(self.conn, data, self.clock())
+        try:
+            db.set_tracker_status(self.conn, data, self.clock())
+        except psycopg.Error as exc:
+            log.warning("could not save the heartbeat to the database: %s", exc)
 
     def _refresh_settings(self) -> None:
         """Pick up settings saved in the dashboard (the DB row wins over config.yaml once it exists)."""

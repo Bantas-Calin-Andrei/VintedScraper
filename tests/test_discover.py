@@ -141,3 +141,12 @@ def test_catalog_url_includes_size_filter():
 
 def test_catalog_url_without_sizes_has_no_size_filter():
     assert "size_ids" not in build_catalog_url(BASE, Query("x", (76,), (53,), status_ids=(6,)))
+
+
+def test_stale_query_state_starts_with_a_baseline(conn, tmp_path):
+    db.set_query_state(conn, "streetwear", 100, NOW - timedelta(days=2))  # group re-added, or tracker was off
+    fetcher = FakeFetcher({CAT1: catalog_page(CAT1, [500, 499])})
+    result = run(conn, fetcher, tmp_path=tmp_path)
+    assert result.baseline is True
+    assert fetcher.calls == [CAT1]
+    assert db.get_query_state(conn, "streetwear") == (500, NOW)

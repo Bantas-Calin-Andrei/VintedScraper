@@ -74,7 +74,8 @@ def discover_query(
     items = _load_catalog(fetcher, cfg, q, 1, debug_dir, result)
     if items is None:
         return result
-    if state is None:
+    stale = state is not None and clock() - state[1] > timedelta(minutes=cfg.max_item_age_minutes)
+    if state is None or stale:
         high_water = max((i.id for i in items), default=0)
         db.set_query_state(conn, q.name, high_water, clock())
         result.baseline = True

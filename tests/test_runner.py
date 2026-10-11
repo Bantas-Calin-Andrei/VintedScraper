@@ -140,3 +140,16 @@ def test_heartbeat_goes_to_the_database_with_pause_end(conn, tmp_path):
     assert data["health"] == "blocked"
     assert data["paused_until"] == (NOW + timedelta(minutes=30)).isoformat()
     assert updated == NOW
+
+
+def test_back_off_still_pauses_when_the_heartbeat_cannot_be_saved(conn, tmp_path, monkeypatch):
+    import psycopg
+
+    def broken(*args, **kwargs):
+        raise psycopg.OperationalError("database went away")
+
+    monkeypatch.setattr(db, "set_tracker_status", broken)
+    sleeps = []
+    runner = make_runner(conn, BlockingFetcher(), tmp_path, sleeps=sleeps)
+    runner.run_forever(max_ticks=1)
+    assert sleeps == [1800.0]

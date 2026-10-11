@@ -12,7 +12,9 @@
     {% endfor %}{% endif %}
   </div>
   <input type="search" name="brand_q" placeholder="+ add brand (search Vinted)" autocomplete="off"
-         hx-get="/brands/search" hx-vals='{"group": "{{ key }}"}' hx-trigger="keyup changed delay:700ms"
+         onkeydown="if (event.key === 'Enter') event.preventDefault()"
+         hx-get="/brands/search" hx-vals='{"group": "{{ key }}"}'
+         hx-trigger="keyup changed delay:700ms, keydown[key=='Enter']"
          hx-target="#results-{{ key }}" hx-indicator="#spin-{{ key }}">
   <span class="htmx-indicator muted" id="spin-{{ key }}">searching Vinted…</span>
   <div class="results" id="results-{{ key }}"></div>

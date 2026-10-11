@@ -162,3 +162,9 @@ def test_brand_search_failure_message(conn):
 def test_brand_search_no_results(conn):
     text = make_client(conn).get("/brands/search", params={"brand_q": "zzzz", "group": "g0"}).text
     assert "No brand called" in text
+
+
+def test_enter_in_brand_search_does_not_submit_the_form(conn, client):
+    watch_settings.save(conn, make_settings(), NOW)
+    text = client.get("/fragments/settings").text
+    assert "if (event.key === 'Enter') event.preventDefault()" in text
