@@ -29,7 +29,19 @@ and exports an Excel report by brand, category, size, condition and price band.
 | `.venv\Scripts\python -m vinted_tracker export` | Writes `vinted_report.xlsx` |
 | `.venv\Scripts\python -m vinted_tracker probe <url>` | Fetches one page and shows what the parser reads |
 
-Edit `config.yaml` to change the watchlist (brand IDs), check schedule or rate limits.
+The watchlist (brand groups, product types, sizes, conditions) is edited in the dashboard. `config.yaml` only
+seeds it the first time, and keeps the check schedule and rate limits.
+
+## Dashboard
+
+`.venv\Scripts\python -m vinted_tracker dashboard`, then open http://localhost:8000 (only reachable from this PC).
+
+- Top bar: tracker status (green running / orange blocked or broken / red stopped) and the **⬇ Excel** download.
+- Tiles, charts of median time to sell, and a live table of every listing (refreshes every 30 s).
+- **⚙ Settings**: brand groups (search Vinted to add brands), product types, sizes, conditions.
+  Saving applies to new listings within ~5 minutes; listings already tracked carry on.
+
+To start it automatically at logon: `powershell -ExecutionPolicy Bypass -File scripts\register_dashboard_task.ps1`.
 
 ## Run unattended
 

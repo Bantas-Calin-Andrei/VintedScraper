@@ -45,3 +45,22 @@ def test_run_refuses_to_start_when_another_tracker_holds_the_lock(tmp_path, monk
     with single_instance(tmp_path / "tracker.lock"):
         assert cli.main(["run"]) == 1
     assert "already running" in capsys.readouterr().out
+
+
+def test_parser_reads_dashboard_port():
+    args = build_parser().parse_args(["dashboard", "--port", "8123"])
+    assert (args.cmd, args.port) == ("dashboard", 8123)
+    assert build_parser().parse_args(["dashboard"]).port == 8000
+
+
+def test_port_is_free_detects_a_busy_port():
+    import socket
+
+    from vinted_tracker.__main__ import port_is_free
+
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        port = busy.getsockname()[1]
+        assert port_is_free(port) is False
+    assert port_is_free(port) is True

@@ -6,6 +6,7 @@ import gzip
 import json
 import logging
 import re
+import socket
 import sys
 import time
 from logging.handlers import RotatingFileHandler
@@ -24,6 +25,7 @@ from .parse import ParseError, parse_catalog, parse_item
 from .runner import Runner
 
 PROFILE_DIR = Path("browser-profile")
+LOOKUP_PROFILE_DIR = Path("browser-profile-lookup")
 FIXTURES_DIR = Path("tests/fixtures")
 STATUS_PATH = Path("status.json")
 LOCK_PATH = Path("tracker.lock")
@@ -50,6 +52,8 @@ def build_parser() -> argparse.ArgumentParser:
     probe.add_argument("url")
     probe.add_argument("--save-as", default=None, help="also save it as a test fixture with this name")
     probe.add_argument("--headed", action="store_true")
+    dashboard = sub.add_parser("dashboard", help="serve the web dashboard at http://localhost:8000")
+    dashboard.add_argument("--port", type=int, default=8000)
     return parser
 
 
@@ -157,7 +161,42 @@ def cmd_probe(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
-COMMANDS = {"run": cmd_run, "init-db": cmd_init_db, "status": cmd_status, "export": cmd_export, "probe": cmd_probe}
+def port_is_free(port: int) -> bool:
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+def cmd_dashboard(cfg: Config, args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from .brand_lookup import BrandLookup, playwright_brand_search
+    from .web.app import create_app
+
+    if not port_is_free(args.port):
+        print(f"Port {args.port} is already in use (is the dashboard already running?). Try --port {args.port + 1}.")
+        return 1
+    with db.connect(cfg.database_url) as conn:
+        db.init_schema(conn)
+        watch_settings.ensure_seeded(conn, cfg, utcnow())
+
+    def connect():
+        return db.connect(cfg.database_url)
+
+    lookup = BrandLookup(connect, playwright_brand_search(LOOKUP_PROFILE_DIR, cfg.base_url))
+    app = create_app(connect, lookup, base_url=cfg.base_url)
+    print(f"Dashboard: http://localhost:{args.port}  (Ctrl+C to stop)")
+    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    return 0
+
+
+COMMANDS = {
+    "run": cmd_run, "init-db": cmd_init_db, "status": cmd_status, "export": cmd_export,
+    "probe": cmd_probe, "dashboard": cmd_dashboard,
+}
 
 
 def main(argv: list[str] | None = None) -> int:
