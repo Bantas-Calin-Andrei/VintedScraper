@@ -16,3 +16,4 @@ logs/
 spike/*.log
 tracker.lock
 .superpowers/brainstorm/
+browser-profile-lookup/
