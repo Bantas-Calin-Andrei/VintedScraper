@@ -13,11 +13,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import db, stats
-from ..brand_lookup import BrandLookup
+from .. import db, stats, watch_settings
+from ..brand_lookup import BrandLookup, LookupFailed
 from ..export import build_report, write_report
 from ..models import utcnow
-from ..vinted_ref import PRODUCT_TYPES
+from ..vinted_ref import CONDITIONS, LETTER_SIZES, PRODUCT_TYPES, WAIST_SIZES
 
 HERE = Path(__file__).resolve().parent
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -97,5 +97,53 @@ def create_app(
         write_report(frames, buffer)
         name = f"vinted_report_{clock().date().isoformat()}.xlsx"
         return Response(buffer.getvalue(), media_type=XLSX, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    def settings_context(settings, *, saved: bool = False, errors: list[str] | None = None) -> dict:
+        return {
+            "settings": settings, "saved": saved, "errors": errors or [],
+            "types": list(PRODUCT_TYPES.items()), "letter_sizes": list(LETTER_SIZES.items()),
+            "waist_sizes": list(WAIST_SIZES.items()), "conditions": list(CONDITIONS.items()),
+        }
+
+    @app.get("/fragments/settings", response_class=HTMLResponse)
+    def settings_fragment(request: Request):
+        try:
+            with conn_factory() as conn:
+                loaded = watch_settings.load(conn)
+        except psycopg.OperationalError:
+            return render(request, "_db_error.html")
+        return render(request, "_settings.html", **settings_context(loaded[1] if loaded else None))
+
+    @app.post("/settings", response_class=HTMLResponse)
+    async def save_settings(request: Request):
+        items = list((await request.form()).multi_items())
+        submitted = None
+        try:
+            submitted = watch_settings.from_form(items)
+            with conn_factory() as conn:
+                watch_settings.save(conn, submitted, clock())
+        except watch_settings.SettingsError as exc:
+            if submitted is None:
+                try:
+                    with conn_factory() as conn:
+                        loaded = watch_settings.load(conn)
+                    submitted = loaded[1] if loaded else None
+                except psycopg.OperationalError:
+                    return render(request, "_db_error.html")
+            return render(request, "_settings.html", **settings_context(submitted, errors=exc.errors))
+        except psycopg.OperationalError:
+            return render(request, "_db_error.html")
+        return render(request, "_settings.html", **settings_context(submitted, saved=True))
+
+    @app.get("/brands/search", response_class=HTMLResponse)
+    def brand_search(request: Request, brand_q: str = "", group: str = ""):
+        error, results = None, []
+        try:
+            results = lookup.search(brand_q)
+        except LookupFailed as exc:
+            error = str(exc)
+        except psycopg.OperationalError:
+            error = "Can't reach the database."
+        return render(request, "_brand_results.html", results=results, error=error, q=brand_q.strip(), group=group)
 
     return app

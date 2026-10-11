@@ -97,3 +97,68 @@ def test_database_down_shows_a_message():
     assert "Can't reach the database" in client.get("/fragments/tiles").text
     assert "Can't reach the database" in client.get("/fragments/status").text
     assert client.get("/api/charts").status_code == 503
+
+
+from helpers import make_settings  # noqa: E402
+
+from vinted_tracker import watch_settings  # noqa: E402
+
+VALID_FORM = {
+    "group_key": ["g0"], "group_name_g0": "Streetwear", "brand_g0": ["53|Nike", "14|adidas"],
+    "catalog_ids": ["76", "79"], "size_ids": ["208"], "status_ids": ["6", "1"],
+}
+
+
+def test_settings_panel_without_settings(client):
+    assert "Start the tracker once" in client.get("/fragments/settings").text
+
+
+def test_settings_panel_shows_current_settings(conn, client):
+    watch_settings.save(conn, make_settings(), NOW)
+    text = client.get("/fragments/settings").text
+    assert 'value="streetwear"' in text and "Nike" in text
+    assert 'name="catalog_ids" value="76" checked' in text
+    assert 'name="catalog_ids" value="257" checked' not in text
+
+
+def test_saving_valid_settings(conn, client):
+    watch_settings.save(conn, make_settings(), NOW)
+    text = client.post("/settings", data=VALID_FORM).text
+    assert "Saved" in text
+    version, s = watch_settings.load(conn)
+    assert version == 2
+    assert [b.title for b in s.groups[0].brands] == ["Nike", "adidas"] and s.size_ids == (208,)
+
+
+def test_invalid_settings_are_refused_and_kept_in_the_form(conn, client):
+    watch_settings.save(conn, make_settings(), NOW)
+    form = dict(VALID_FORM, catalog_ids=[])
+    text = client.post("/settings", data=form).text
+    assert "Pick at least one product type." in text
+    assert 'value="Streetwear"' in text  # what the user typed is not lost
+    assert watch_settings.load(conn)[0] == 1
+
+
+def test_brand_search_results(conn):
+    client = make_client(conn, search=lambda kw: [{"id": 362, "title": "Carhartt", "item_count": 4087187}])
+    text = client.get("/brands/search", params={"brand_q": "carhartt", "group": "g0"}).text
+    assert 'data-id="362"' in text and 'data-group="g0"' in text and "4,087,187" in text
+
+
+def test_brand_results_escape_titles(conn):
+    client = make_client(conn, search=lambda kw: [{"id": 1, "title": '"><img src=x>', "item_count": 1}])
+    text = client.get("/brands/search", params={"brand_q": "xx", "group": "g0"}).text
+    assert "<img src=x>" not in text
+
+
+def test_brand_search_failure_message(conn):
+    def failing(kw):
+        raise RuntimeError("challenge")
+
+    text = make_client(conn, search=failing).get("/brands/search", params={"brand_q": "nike", "group": "g0"}).text
+    assert "answer, try again in a few minutes" in text  # the apostrophe in "didn't" is HTML-escaped
+
+
+def test_brand_search_no_results(conn):
+    text = make_client(conn).get("/brands/search", params={"brand_q": "zzzz", "group": "g0"}).text
+    assert "No brand called" in text

@@ -1,0 +1,70 @@
+{% macro group_block(key, g) %}
+<fieldset class="group">
+  <input type="hidden" name="group_key" value="{{ key }}">
+  <div class="group-head">
+    <input name="group_name_{{ key }}" value="{{ g.name if g else '' }}" placeholder="Group name" aria-label="Group name">
+    <button type="button" class="x" title="Remove group" onclick="this.closest('fieldset').remove()">✕</button>
+  </div>
+  <div class="chips" id="brands-{{ key }}">
+    {% if g %}{% for b in g.brands %}
+    <span class="chip"><input type="hidden" name="brand_{{ key }}" value="{{ b.id }}|{{ b.title }}">{{ b.title }}
+      <button type="button" class="x" title="Remove" onclick="this.parentElement.remove()">✕</button></span>
+    {% endfor %}{% endif %}
+  </div>
+  <input type="search" name="brand_q" placeholder="+ add brand (search Vinted)" autocomplete="off"
+         hx-get="/brands/search" hx-vals='{"group": "{{ key }}"}' hx-trigger="keyup changed delay:700ms"
+         hx-target="#results-{{ key }}" hx-indicator="#spin-{{ key }}">
+  <span class="htmx-indicator muted" id="spin-{{ key }}">searching Vinted…</span>
+  <div class="results" id="results-{{ key }}"></div>
+</fieldset>
+{% endmacro %}
+
+<div class="panel-head">
+  <h2>Settings</h2>
+  <button type="button" class="x" title="Close" onclick="closeSettings()">✕</button>
+</div>
+{% if saved %}<p class="ok">Saved. The tracker applies it within ~5 min (new listings only).</p>{% endif %}
+{% if errors %}<ul class="error">{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+
+{% if settings is none %}
+<p class="muted">No settings yet. Start the tracker once to create them from config.yaml.</p>
+{% else %}
+<form hx-post="/settings" hx-target="#settings-panel">
+  <h3>Brand groups</h3>
+  <div id="groups">
+    {% for g in settings.groups %}{{ group_block("g" ~ loop.index0, g) }}{% endfor %}
+  </div>
+  <button type="button" onclick="addGroup()">+ New group</button>
+  <template id="group-template">{{ group_block("__KEY__", none) }}</template>
+
+  <h3>Product types</h3>
+  <div class="checks">
+    {% for id, name in types %}
+    <label><input type="checkbox" name="catalog_ids" value="{{ id }}"{% if id in settings.catalog_ids %} checked{% endif %}> {{ name }}</label>
+    {% endfor %}
+  </div>
+
+  <h3>Sizes <span class="muted">(none ticked = all sizes)</span></h3>
+  <p class="label">Letter</p>
+  <div class="checks inline">
+    {% for id, name in letter_sizes %}
+    <label><input type="checkbox" name="size_ids" value="{{ id }}"{% if id in settings.size_ids %} checked{% endif %}> {{ name }}</label>
+    {% endfor %}
+  </div>
+  <p class="label">Waist</p>
+  <div class="checks inline">
+    {% for id, name in waist_sizes %}
+    <label><input type="checkbox" name="size_ids" value="{{ id }}"{% if id in settings.size_ids %} checked{% endif %}> {{ name }}</label>
+    {% endfor %}
+  </div>
+
+  <h3>Condition</h3>
+  <div class="checks">
+    {% for id, name in conditions %}
+    <label><input type="checkbox" name="status_ids" value="{{ id }}"{% if id in settings.status_ids %} checked{% endif %}> {{ name }}</label>
+    {% endfor %}
+  </div>
+
+  <div class="save-row"><button type="submit" class="primary">Save</button></div>
+</form>
+{% endif %}
