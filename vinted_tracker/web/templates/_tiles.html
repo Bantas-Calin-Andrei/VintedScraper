@@ -1,0 +1,8 @@
+<div class="tile"><span class="label">Tracking</span><span class="value">{{ t.tracking }}</span></div>
+<div class="tile"><span class="label">Sold</span><span class="value">{{ t.sold }}</span></div>
+<div class="tile"><span class="label">Deleted</span><span class="value">{{ t.deleted }}</span></div>
+<div class="tile"><span class="label">Median time to sell</span>
+  <span class="value">{% if t.median_hours is none %}–{% elif t.median_hours < 48 %}{{ t.median_hours }} h{% else %}{{ "%.1f"|format(t.median_hours / 24) }} d{% endif %}</span></div>
+<div class="tile"><span class="label">Sold within 7 days</span>
+  <span class="value">{% if t.pct_sold_7d is none %}–{% else %}{{ t.pct_sold_7d }}%{% endif %}</span>
+  {% if t.pct_sold_7d is none %}<span class="hint">needs items older than 7 days</span>{% endif %}</div>
