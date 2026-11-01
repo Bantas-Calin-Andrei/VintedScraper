@@ -67,3 +67,30 @@ def test_two_letter_keywords_do_not_search(conn):
     search = FakeSearch()
     assert make(conn, search).search("de") == []
     assert search.calls == []
+
+
+def test_merge_brand_results_dedupes_and_puts_exact_matches_first():
+    from vinted_tracker.brand_lookup import merge_brand_results
+
+    public = [{"id": 1, "title": "Vesari", "item_count": 2419}, {"id": 2, "title": "Vesta", "item_count": 50}]
+    upload = [{"id": 20590953, "title": "Vescartes", "item_count": 0}, {"id": 1, "title": "Vesari", "item_count": 0}]
+    merged = merge_brand_results("vescartes", public, upload)
+    assert [b["id"] for b in merged] == [20590953, 1, 2]
+    assert merged[1]["item_count"] == 2419  # the public list's count is kept for duplicates
+
+
+def test_merge_brand_results_caps_at_ten():
+    from vinted_tracker.brand_lookup import merge_brand_results
+
+    many = [{"id": i, "title": f"B{i}", "item_count": 1} for i in range(15)]
+    assert len(merge_brand_results("x", many, [])) == 10
+
+
+def test_empty_results_are_not_cached(conn):
+    search = FakeSearch(result=[])
+    search.result = []
+    lookup = make(conn, search)
+    assert lookup.search("vescartes") == []
+    assert db.get_brand_cache(conn, "vescartes") is None
+    lookup.search("vescartes")
+    assert search.calls == ["vescartes", "vescartes"]

@@ -197,3 +197,9 @@ def test_products_show_manual_tag_and_sort(conn, client):
     text = client.get("/fragments/products", params={"sort": "price_desc"}).text
     assert 'class="tag manual"' in text
     assert text.index("Gucci belt") < text.index("Auto hoodie")
+
+
+def test_brand_results_hide_unknown_item_counts(conn):
+    client = make_client(conn, search=lambda kw: [{"id": 20590953, "title": "Vescartes", "item_count": 0}])
+    text = client.get("/brands/search", params={"brand_q": "vescartes", "group": "g0"}).text
+    assert "Vescartes" in text and "0 items" not in text

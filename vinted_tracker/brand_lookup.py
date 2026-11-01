@@ -63,9 +63,32 @@ class BrandLookup:
                 raise LookupFailed(FAILED_MESSAGE) from exc
             finally:
                 self._last = self._monotonic()
-        with self._conn_factory() as conn:
-            db.put_brand_cache(conn, key, results, self._clock())
+        if results:  # "no such brand" isn't remembered, so a brand Vinted adds later is still found
+            with self._conn_factory() as conn:
+                db.put_brand_cache(conn, key, results, self._clock())
         return results
+
+
+def merge_brand_results(keyword: str, *result_lists: list[dict], limit: int = 10) -> list[dict]:
+    """Combine brand lists without duplicates; an exact name match comes first, and known item counts win."""
+    merged: dict[int, dict] = {}
+    for results in result_lists:
+        for brand in results:
+            known = merged.get(brand["id"])
+            if known is None:
+                merged[brand["id"]] = dict(brand)
+            elif not known["item_count"] and brand["item_count"]:
+                known["item_count"] = brand["item_count"]
+    key = keyword.strip().casefold()
+    ordered = sorted(merged.values(), key=lambda b: b["title"].casefold() != key)  # stable: keeps list order
+    return ordered[:limit]
+
+
+def _brands(data: dict) -> list[dict]:
+    return [
+        {"id": int(b["id"]), "title": str(b["title"]), "item_count": int(b.get("item_count") or 0)}
+        for b in (data.get("brands") or [])
+    ]
 
 
 def playwright_brand_search(base_url: str) -> SearchFn:
@@ -81,20 +104,24 @@ def playwright_brand_search(base_url: str) -> SearchFn:
                 response = page.goto(f"{base_url}/catalog", wait_until="load", timeout=45_000)
                 if is_challenge(response.status if response else 0, page.content()):
                     raise BlockedError("challenge during brand lookup")
+                # Two lists: the public brand search (established brands, with item counts) and the
+                # upload form's list, which also has small brands such as Vescartes.
                 data = page.evaluate(
                     """async (kw) => {
-                        const r = await fetch('/api/v2/brands?keyword=' + encodeURIComponent(kw),
-                                              {headers: {accept: 'application/json'}});
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return await r.json();
+                        const get = async (path) => {
+                            const r = await fetch(path + encodeURIComponent(kw), {headers: {accept: 'application/json'}});
+                            if (!r.ok) throw new Error('HTTP ' + r.status);
+                            return await r.json();
+                        };
+                        return {
+                            public: await get('/api/v2/brands?keyword='),
+                            upload: await get('/api/v2/item_upload/brands?keyword='),
+                        };
                     }""",
                     keyword,
                 )
             finally:
                 browser.close()
-        return [
-            {"id": int(b["id"]), "title": str(b["title"]), "item_count": int(b.get("item_count") or 0)}
-            for b in (data.get("brands") or [])[:10]
-        ]
+        return merge_brand_results(keyword, _brands(data["public"]), _brands(data["upload"]))
 
     return search
