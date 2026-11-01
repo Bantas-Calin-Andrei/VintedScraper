@@ -32,6 +32,10 @@ ALREADY_RUNNING_HELP = (
     "Another tracker is already running (probably the background task). "
     "Stop it first with: powershell -ExecutionPolicy Bypass -File scripts\\stop_tracker.ps1"
 )
+DATABASE_DOWN_HELP = (
+    "Can't reach the database. Is PostgreSQL running? On Windows: open services.msc and start "
+    "'postgresql-x64-18' (or run 'Start-Service postgresql-x64-18' in an Administrator PowerShell)."
+)
 _ITEM_ID_RE = re.compile(r"/items/(\d+)")
 log = logging.getLogger("vinted_tracker")
 
@@ -95,7 +99,7 @@ def cmd_run(cfg: Config, args: argparse.Namespace) -> int:
                     Runner(conn, browser, cfg, status_path=STATUS_PATH).run_forever(max_ticks=args.max_ticks)
                     return 0
                 except psycopg.OperationalError as exc:
-                    log.error("Database unreachable (%s). Scraping is paused; retrying in 60 s.", exc)
+                    log.error("%s Scraping is paused; retrying in 60 s. Details: %s", DATABASE_DOWN_HELP, exc)
                     time.sleep(60)
     except AlreadyRunning:
         print(ALREADY_RUNNING_HELP)
@@ -210,6 +214,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         return COMMANDS[args.cmd](cfg, args)
+    except psycopg.OperationalError as exc:
+        print(DATABASE_DOWN_HELP)
+        print(f"Details: {exc}")
+        return 2
     except KeyboardInterrupt:
         print("Stopped.")
         return 0

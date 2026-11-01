@@ -103,7 +103,8 @@ CREATE TABLE IF NOT EXISTS brand_cache (
 
 
 def connect(url: str) -> psycopg.Connection:
-    return psycopg.connect(url, autocommit=True, row_factory=dict_row)
+    # Give up after 5 s instead of the OS default (~20 s per attempt on Windows) when PostgreSQL is down.
+    return psycopg.connect(url, autocommit=True, row_factory=dict_row, connect_timeout=5)
 
 
 def init_schema(conn: psycopg.Connection) -> None:

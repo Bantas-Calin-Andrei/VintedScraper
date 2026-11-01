@@ -95,6 +95,7 @@ def test_database_down_shows_a_message():
     client = TestClient(create_app(broken, BrandLookup(broken, lambda kw: []), clock=lambda: NOW))
     assert client.get("/").status_code == 200
     assert "Can't reach the database" in client.get("/fragments/tiles").text
+    assert "Is PostgreSQL running" in client.get("/fragments/tiles").text
     assert "Can't reach the database" in client.get("/fragments/status").text
     assert client.get("/api/charts").status_code == 503
 

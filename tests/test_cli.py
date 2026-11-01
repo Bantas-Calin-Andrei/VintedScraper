@@ -64,3 +64,13 @@ def test_port_is_free_detects_a_busy_port():
         port = busy.getsockname()[1]
         assert port_is_free(port) is False
     assert port_is_free(port) is True
+
+
+def test_commands_explain_when_the_database_is_down(monkeypatch, capsys):
+    import vinted_tracker.__main__ as cli
+
+    monkeypatch.setattr(cli, "setup_logging", lambda: None)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://vinted:x@127.0.0.1:1/vinted_tracker")
+    assert cli.main(["status"]) == 2
+    out = capsys.readouterr().out
+    assert "Can't reach the database" in out and "postgresql-x64-18" in out

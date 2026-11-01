@@ -154,3 +154,20 @@ def test_manual_items_do_not_use_up_the_daily_quota(conn):
     db.insert_item(conn, item=make_catalog_item(2), snap=make_snapshot(2), query_name="manual", uploaded_at=T0,
                    first_seen_at=T0 + timedelta(minutes=5), next_check_at=T0, source="manual")
     assert db.count_new_since(conn, T0) == 1
+
+
+def test_connect_gives_up_after_five_seconds(monkeypatch):
+    import psycopg
+
+    seen = {}
+
+    def fake_connect(url, **kwargs):
+        seen.update(kwargs)
+        raise psycopg.OperationalError("refused")
+
+    monkeypatch.setattr(psycopg, "connect", fake_connect)
+    import pytest
+
+    with pytest.raises(psycopg.OperationalError):
+        db.connect("postgresql://u:p@localhost/x")
+    assert seen["connect_timeout"] == 5
