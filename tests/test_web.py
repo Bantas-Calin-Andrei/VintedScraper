@@ -204,3 +204,12 @@ def test_brand_results_hide_unknown_item_counts(conn):
     client = make_client(conn, search=lambda kw: [{"id": 20590953, "title": "Vescartes", "item_count": 0}])
     text = client.get("/brands/search", params={"brand_q": "vescartes", "group": "g0"}).text
     assert "Vescartes" in text and "0 items" not in text
+
+
+def test_settings_panel_price_range(conn, client):
+    watch_settings.save(conn, make_settings(price_from=100.0), NOW)
+    text = client.get("/fragments/settings").text
+    assert 'name="price_from"' in text and 'value="100"' in text and 'name="price_to"' in text
+    client.post("/settings", data=dict(VALID_FORM, price_from="150", price_to=""))
+    _, s = watch_settings.load(conn)
+    assert (s.price_from, s.price_to) == (150.0, None)

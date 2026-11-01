@@ -107,3 +107,32 @@ def test_from_form_reads_groups_by_key_and_dedupes_brands():
 def test_from_form_rejects_garbage():
     with pytest.raises(SettingsError):
         from_form([("group_key", "g0"), ("group_name_g0", "x"), ("brand_g0", "abc|Nike")])
+
+
+def test_price_range_goes_into_every_query():
+    s = make_settings(price_from=100.0, price_to=None)
+    assert s.queries()[0].price_from == 100.0 and s.queries()[0].price_to is None
+    assert WatchSettings.from_json(s.to_json()) == s
+
+
+def test_old_settings_rows_without_prices_still_load():
+    data = make_settings().to_json()
+    del data["price_from"], data["price_to"]
+    assert WatchSettings.from_json(data).price_from is None
+
+
+@pytest.mark.parametrize(
+    ("prices", "message"),
+    [((-5.0, None), "Prices can't be negative."), ((300.0, 100.0), "Min price is higher than max price.")],
+)
+def test_price_validation(prices, message):
+    assert message in errors_of(make_settings(price_from=prices[0], price_to=prices[1]))
+
+
+def test_from_form_reads_prices():
+    base = [("group_key", "g0"), ("group_name_g0", "x"), ("brand_g0", "53|Nike"), ("catalog_ids", "76"), ("status_ids", "6")]
+    s = from_form(base + [("price_from", "100"), ("price_to", " ")])
+    assert (s.price_from, s.price_to) == (100.0, None)
+    assert from_form(base + [("price_from", "99,5")]).price_from == 99.5
+    with pytest.raises(SettingsError):
+        from_form(base + [("price_from", "cheap")])

@@ -197,7 +197,7 @@ def count_new_since(conn: psycopg.Connection, since: datetime, query_name: str |
 def due_items(conn: psycopg.Connection, now: datetime, limit: int) -> list[dict]:
     return conn.execute(
         """
-        SELECT id, url, uploaded_at, next_check_at FROM items
+        SELECT id, url, uploaded_at, first_seen_at, source, next_check_at FROM items
         WHERE final_status IS NULL AND NOT out_of_scope AND next_check_at <= %s
         ORDER BY next_check_at, id
         LIMIT %s

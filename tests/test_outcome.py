@@ -54,3 +54,14 @@ def test_unsold_after_stop():
 
 def test_hidden_at_stop():
     assert outcome(obs((0.1, A), (700, H)), 720).final_status == "hidden"
+
+
+def test_tracking_window_can_start_later_than_posting():
+    # a listing posted 60 days ago, added by hand 1 day ago: still being tracked
+    posted = T0 - timedelta(days=60)
+    result = compute_outcome(posted, [(T0, A)], T0 + timedelta(days=1), stop_age=STOP, uncertain_gap=GAP,
+                             tracked_since=T0)
+    assert result.final_status is None
+    sold = compute_outcome(posted, [(T0, A), (T0 + timedelta(hours=2), S)], T0 + timedelta(hours=2),
+                           stop_age=STOP, uncertain_gap=GAP, tracked_since=T0)
+    assert (sold.final_status, sold.sold_after_max) == ("sold", timedelta(days=60, hours=2))

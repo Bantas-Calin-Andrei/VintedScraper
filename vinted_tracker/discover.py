@@ -127,6 +127,10 @@ def _catalog_reject_reason(
 ) -> str | None:
     if cfg.allowed_conditions and item.condition not in cfg.allowed_conditions:
         return "condition"  # safety net in case Vinted ignores the status_ids filter
+    price = item.price_ron
+    if price is not None and ((q.price_from is not None and price < q.price_from)
+                              or (q.price_to is not None and price > q.price_to)):
+        return "price"  # safety net in case Vinted ignores the price filter
     if db.count_new_since(conn, now - timedelta(days=1)) >= cfg.max_new_per_day:
         return "daily_cap"
     if db.count_new_since(conn, now - timedelta(hours=1), q.name) >= hourly_quota(cfg):

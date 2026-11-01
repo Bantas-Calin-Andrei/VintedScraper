@@ -38,11 +38,13 @@ def recheck_item(
     stretch: float = 1.0,
 ) -> RecheckResult:
     item_id, uploaded_at = row["id"], row["uploaded_at"]
+    # Listings added by hand are tracked for 30 days from adding; sell time still counts from posting.
+    tracked_since = row.get("first_seen_at") if row.get("source") == "manual" else None
     try:
         page = fetcher.fetch(item_url(cfg.base_url, item_id))
     except FetchError:
         # Skip until the next cycle so one unreachable page can't block every other recheck.
-        _record(conn, cfg, item_id, uploaded_at, clock(), None, stretch)
+        _record(conn, cfg, item_id, uploaded_at, clock(), None, stretch, tracked_since)
         raise
     now = clock()
     snap: ItemSnapshot | None
@@ -52,7 +54,7 @@ def recheck_item(
         log.warning("item %s: %s", item_id, exc)
         save_debug_page(page, f"item-{item_id}", debug_dir)
         snap = None
-    outcome = _record(conn, cfg, item_id, uploaded_at, now, snap, stretch)
+    outcome = _record(conn, cfg, item_id, uploaded_at, now, snap, stretch, tracked_since)
     if outcome.final_status:
         log.info("item %s finished: %s", item_id, outcome.final_status)
     status = snap.status if snap is not None else Status.UNKNOWN
@@ -67,6 +69,7 @@ def _record(
     now: datetime,
     snap: ItemSnapshot | None,
     stretch: float,
+    tracked_since: datetime | None = None,
 ) -> Outcome:
     """Store one observation and the item's resulting outcome and next check."""
     status = snap.status if snap is not None else Status.UNKNOWN
@@ -90,10 +93,11 @@ def _record(
         now,
         stop_age=stop_age(schedule),
         uncertain_gap=uncertain_gap,
+        tracked_since=tracked_since,
     )
     nxt = None
     if not outcome.final_status:
-        nxt = next_check_at(uploaded_at, now, schedule, stretch, max_interval=uncertain_gap / 2)
+        nxt = next_check_at(tracked_since or uploaded_at, now, schedule, stretch, max_interval=uncertain_gap / 2)
     db.update_item_after_check(
         conn,
         item_id,

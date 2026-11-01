@@ -59,11 +59,7 @@ def process_next_request(
     if snap.status is Status.DELETED:
         return _finish(conn, item_id, "failed", "This listing no longer exists on Vinted.", now)
 
-    age = snap.upload_age or timedelta(0)
-    if age >= stop_age(cfg.recheck_schedule):
-        return _finish(conn, item_id, "failed", f"Too old to track: it was posted {age.days} days ago.", now)
-
-    uploaded_at = now - age
+    uploaded_at = now - (snap.upload_age or timedelta(0))
     title = details["title"] or f"Listing {item_id}"
     item = CatalogItem(
         id=item_id,
@@ -79,12 +75,13 @@ def process_next_request(
     )
     db.insert_item(
         conn, item=item, snap=snap, query_name="manual", uploaded_at=uploaded_at, first_seen_at=now,
-        next_check_at=next_check_at(uploaded_at, now, cfg.recheck_schedule), source="manual",
+        next_check_at=next_check_at(now, now, cfg.recheck_schedule), source="manual",
     )
     if snap.status is not Status.AVAILABLE:
         outcome = compute_outcome(
             uploaded_at, db.observations_for(conn, item_id), now,
             stop_age=stop_age(cfg.recheck_schedule), uncertain_gap=timedelta(hours=cfg.uncertain_gap_hours),
+            tracked_since=now,
         )
         if outcome.final_status:
             db.update_item_after_check(

@@ -59,7 +59,7 @@ def test_romanian_listing_is_added_as_manual(conn, tmp_path):
     assert row["condition"] == "Nou fără etichetă"
     assert row["uploaded_at"] == NOW - timedelta(days=2)
     assert row["price_listed_ron"] == Decimal("120.00") and row["price_currency"] == "RON"
-    assert row["next_check_at"] == NOW + timedelta(hours=8)
+    assert row["next_check_at"] == NOW + timedelta(hours=2)  # manual: schedule runs from adding
     assert request(conn)["status"] == "done" and "Geacă TNF" in request(conn)["message"]
     assert result == request(conn)["message"]
 
@@ -72,12 +72,13 @@ def test_foreign_seller_keeps_its_own_currency(conn, tmp_path):
     assert (row["price_original"], row["price_currency"]) == (Decimal("150.00"), "PLN")
 
 
-def test_too_old_listing_is_refused(conn, tmp_path):
+def test_old_listing_is_tracked_for_30_days_from_when_it_was_added(conn, tmp_path):
     db.add_manual_request(conn, ITEM, URL, NOW)
     process(conn, item_page(ITEM, text="Încărcat acum 2 luni"), tmp_path)
-    assert item(conn) is None
-    assert request(conn)["status"] == "failed"
-    assert request(conn)["message"] == "Too old to track: it was posted 60 days ago."
+    row = item(conn)
+    assert row["uploaded_at"] == NOW - timedelta(days=60)  # sell time still counts from posting
+    assert row["next_check_at"] == NOW + timedelta(hours=2)  # checks follow the time since adding
+    assert request(conn)["status"] == "done"
 
 
 def test_already_sold_listing_is_recorded_as_sold(conn, tmp_path):

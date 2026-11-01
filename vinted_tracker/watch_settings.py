@@ -38,6 +38,8 @@ class WatchSettings:
     catalog_ids: tuple[int, ...]
     size_ids: tuple[int, ...]
     status_ids: tuple[int, ...]
+    price_from: float | None = None  # RON; None = no limit
+    price_to: float | None = None
 
     def queries(self) -> tuple[Query, ...]:
         return tuple(
@@ -47,6 +49,8 @@ class WatchSettings:
                 brand_ids=tuple(b.id for b in g.brands),
                 status_ids=self.status_ids,
                 size_ids=self.size_ids,
+                price_from=self.price_from,
+                price_to=self.price_to,
             )
             for g in self.groups
         )
@@ -60,6 +64,8 @@ class WatchSettings:
             "catalog_ids": list(self.catalog_ids),
             "size_ids": list(self.size_ids),
             "status_ids": list(self.status_ids),
+            "price_from": self.price_from,
+            "price_to": self.price_to,
         }
 
     @classmethod
@@ -72,6 +78,8 @@ class WatchSettings:
             catalog_ids=tuple(int(x) for x in data["catalog_ids"]),
             size_ids=tuple(int(x) for x in data["size_ids"]),
             status_ids=tuple(int(x) for x in data["status_ids"]),
+            price_from=_price(data.get("price_from")),
+            price_to=_price(data.get("price_to")),
         )
 
 
@@ -97,6 +105,10 @@ def validate(s: WatchSettings) -> None:
     if not s.status_ids:
         errors.append("Pick at least one condition.")
     errors += [f"Unknown condition {c}." for c in s.status_ids if c not in CONDITIONS]
+    if any(p is not None and p < 0 for p in (s.price_from, s.price_to)):
+        errors.append("Prices can't be negative.")
+    elif s.price_from is not None and s.price_to is not None and s.price_from > s.price_to:
+        errors.append("Min price is higher than max price.")
     if errors:
         raise SettingsError(errors)
 
@@ -153,6 +165,17 @@ def from_form(items: list[tuple[str, str]]) -> WatchSettings:
                     brand_id, _, title = v.partition("|")
                     brands.setdefault(int(brand_id), Brand(int(brand_id), title.strip()))
             groups.append(Group(first(f"group_name_{key}").strip(), tuple(brands.values())))
-        return WatchSettings(tuple(groups), ints("catalog_ids"), ints("size_ids"), ints("status_ids"))
+        return WatchSettings(
+            tuple(groups), ints("catalog_ids"), ints("size_ids"), ints("status_ids"),
+            price_from=_price(first("price_from")), price_to=_price(first("price_to")),
+        )
     except ValueError as exc:
         raise SettingsError(["The form contained invalid data. Reload the panel and try again."]) from exc
+
+
+def _price(value) -> float | None:
+    """'100', '99,5', 100 → float; empty → None. Raises ValueError for anything else."""
+    if value is None:
+        return None
+    text = str(value).strip().replace(",", ".")
+    return float(text) if text else None

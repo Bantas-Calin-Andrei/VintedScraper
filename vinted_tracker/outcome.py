@@ -24,6 +24,7 @@ def compute_outcome(
     *,
     stop_age: timedelta,
     uncertain_gap: timedelta,
+    tracked_since: datetime | None = None,
 ) -> Outcome:
     seen = sorted((t, s) for t, s in observations if s is not Status.UNKNOWN)
     for index, (observed_at, status) in enumerate(seen):
@@ -38,7 +39,7 @@ def compute_outcome(
             )
         if status is Status.DELETED:
             return Outcome(final_status=Status.DELETED.value, uncertain=True)
-    if now - uploaded_at >= stop_age:
+    if now - (tracked_since or uploaded_at) >= stop_age:
         last_status = seen[-1][1] if seen else None
         return Outcome(final_status=Status.HIDDEN.value if last_status is Status.HIDDEN else UNSOLD_FINAL)
     return Outcome(final_status=None)

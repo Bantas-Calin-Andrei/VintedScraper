@@ -70,3 +70,5 @@ button.x:hover { color: var(--bad); }
 .req-failed { background: #fee2e2; color: #991b1b; }
 .tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; vertical-align: middle; }
 .tag.manual { background: var(--bad); color: #fff; }
+.prices { display: flex; gap: 16px; }
+.prices input { width: 100px; }

@@ -111,3 +111,15 @@ def test_rechecks_after_downtime_stay_within_half_the_uncertain_gap(conn, tmp_pa
     track(conn)
     check(conn, item_page(1001), 24 * 10, tmp_path, stretch=5.0)
     assert item_row(conn)["next_check_at"] == T0 + timedelta(days=10, hours=24)
+
+
+def test_old_manual_listing_follows_the_schedule_from_when_it_was_added(conn, tmp_path):
+    posted = T0 - timedelta(days=60)
+    db.insert_item(conn, item=make_catalog_item(1001), snap=make_snapshot(1001), query_name="manual",
+                   uploaded_at=posted, first_seen_at=T0, next_check_at=T0 + timedelta(hours=2), source="manual")
+    row = db.due_items(conn, T0 + timedelta(hours=2), limit=1)[0]
+    assert (row["source"], row["first_seen_at"]) == ("manual", T0)
+    now = T0 + timedelta(hours=2)
+    result = recheck_item(conn, FakeFetcher({URL: item_page(1001)}), make_config(), row, lambda: now, tmp_path)
+    assert result.final_status is None
+    assert item_row(conn)["next_check_at"] == now + timedelta(hours=2)

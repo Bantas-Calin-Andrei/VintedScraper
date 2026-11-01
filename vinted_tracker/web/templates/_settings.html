@@ -60,6 +60,14 @@
     {% endfor %}
   </div>
 
+  <h3>Price (RON) <span class="muted">(empty = no limit)</span></h3>
+  <div class="prices">
+    <label>Min <input type="text" inputmode="decimal" name="price_from" size="8"
+      value="{{ '%g' % settings.price_from if settings.price_from is not none else '' }}"></label>
+    <label>Max <input type="text" inputmode="decimal" name="price_to" size="8"
+      value="{{ '%g' % settings.price_to if settings.price_to is not none else '' }}"></label>
+  </div>
+
   <h3>Condition</h3>
   <div class="checks">
     {% for id, name in conditions %}

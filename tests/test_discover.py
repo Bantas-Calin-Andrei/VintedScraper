@@ -150,3 +150,16 @@ def test_stale_query_state_starts_with_a_baseline(conn, tmp_path):
     assert result.baseline is True
     assert fetcher.calls == [CAT1]
     assert db.get_query_state(conn, "streetwear") == (500, NOW)
+
+
+def test_listings_outside_the_price_range_are_skipped_without_fetching(conn, tmp_path):
+    q = Query("streetwear", (5,), (53,), price_from=100.0)
+    url = build_catalog_url(BASE, q)
+    db.set_query_state(conn, "streetwear", 10, NOW - timedelta(minutes=5))
+    page = FetchedPage(url=url, status=200, html=catalog_html(catalog_entry(12, price="80"), catalog_entry(11, price="150"),
+                                                              catalog_entry(10)), text="")
+    fetcher = FakeFetcher({url: page, item_url(BASE, 11): item_page(11)})
+    result = discover_query(conn, fetcher, make_config(queries=(q,)), q, lambda: NOW, tmp_path)
+    assert result.tracked == 1
+    assert item_url(BASE, 12) not in fetcher.calls
+    assert conn.execute("SELECT reason FROM skipped_items WHERE id = 12").fetchone()["reason"] == "price"
