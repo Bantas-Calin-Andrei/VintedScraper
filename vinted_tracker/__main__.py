@@ -25,7 +25,6 @@ from .parse import ParseError, parse_catalog, parse_item
 from .runner import Runner
 
 PROFILE_DIR = Path("browser-profile")
-LOOKUP_PROFILE_DIR = Path("browser-profile-lookup")
 FIXTURES_DIR = Path("tests/fixtures")
 STATUS_PATH = Path("status.json")
 LOCK_PATH = Path("tracker.lock")
@@ -186,7 +185,7 @@ def cmd_dashboard(cfg: Config, args: argparse.Namespace) -> int:
     def connect():
         return db.connect(cfg.database_url)
 
-    lookup = BrandLookup(connect, playwright_brand_search(LOOKUP_PROFILE_DIR, cfg.base_url))
+    lookup = BrandLookup(connect, playwright_brand_search(cfg.base_url))
     app = create_app(connect, lookup, base_url=cfg.base_url)
     print(f"Dashboard: http://localhost:{args.port}  (Ctrl+C to stop)")
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

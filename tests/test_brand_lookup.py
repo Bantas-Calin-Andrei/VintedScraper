@@ -61,3 +61,9 @@ def test_searches_are_spaced_out(conn):
     lookup.search("nike")
     lookup.search("adidas")
     assert sleeps == [5.0]
+
+
+def test_two_letter_keywords_do_not_search(conn):
+    search = FakeSearch()
+    assert make(conn, search).search("de") == []
+    assert search.calls == []

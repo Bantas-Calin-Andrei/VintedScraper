@@ -11,7 +11,7 @@
       <button type="button" class="x" title="Remove" onclick="this.parentElement.remove()">✕</button></span>
     {% endfor %}{% endif %}
   </div>
-  <input type="search" name="brand_q" placeholder="+ add brand (search Vinted)" autocomplete="off"
+  <input type="search" name="brand_q" placeholder="+ add brand (type 3+ letters)" autocomplete="off"
          onkeydown="if (event.key === 'Enter') event.preventDefault()"
          hx-get="/brands/search" hx-vals='{"group": "{{ key }}"}'
          hx-trigger="keyup changed delay:700ms, keydown[key=='Enter']"

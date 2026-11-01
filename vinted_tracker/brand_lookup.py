@@ -6,7 +6,6 @@ import threading
 import time
 from contextlib import AbstractContextManager
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Callable
 
 import psycopg
@@ -18,6 +17,7 @@ from .models import utcnow
 log = logging.getLogger(__name__)
 SearchFn = Callable[[str], list[dict]]
 ConnFactory = Callable[[], AbstractContextManager[psycopg.Connection]]
+MIN_KEYWORD_LENGTH = 3
 FAILED_MESSAGE = "Vinted didn't answer, try again in a few minutes."
 
 
@@ -45,7 +45,7 @@ class BrandLookup:
 
     def search(self, keyword: str) -> list[dict]:
         key = keyword.strip().casefold()
-        if len(key) < 2:
+        if len(key) < MIN_KEYWORD_LENGTH:
             return []
         with self._conn_factory() as conn:
             cached = db.get_brand_cache(conn, key)
@@ -68,17 +68,17 @@ class BrandLookup:
         return results
 
 
-def playwright_brand_search(profile_dir: Path, base_url: str) -> SearchFn:
+def playwright_brand_search(base_url: str) -> SearchFn:
+    """Each search uses a clean browser session: Vinted gives every new visitor a fresh anonymous token,
+    whereas reused cookies hold an expired one and the brands API answers 401."""
     def search(keyword: str) -> list[dict]:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            ctx = p.chromium.launch_persistent_context(
-                str(profile_dir), headless=True, locale="ro-RO", timezone_id="Europe/Bucharest"
-            )
+            browser = p.chromium.launch(headless=True)
             try:
-                page = ctx.pages[0] if ctx.pages else ctx.new_page()
-                response = page.goto(f"{base_url}/catalog", wait_until="domcontentloaded", timeout=45_000)
+                page = browser.new_context(locale="ro-RO", timezone_id="Europe/Bucharest").new_page()
+                response = page.goto(f"{base_url}/catalog", wait_until="load", timeout=45_000)
                 if is_challenge(response.status if response else 0, page.content()):
                     raise BlockedError("challenge during brand lookup")
                 data = page.evaluate(
@@ -91,7 +91,7 @@ def playwright_brand_search(profile_dir: Path, base_url: str) -> SearchFn:
                     keyword,
                 )
             finally:
-                ctx.close()
+                browser.close()
         return [
             {"id": int(b["id"]), "title": str(b["title"]), "item_count": int(b.get("item_count") or 0)}
             for b in (data.get("brands") or [])[:10]
